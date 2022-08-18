@@ -7,16 +7,18 @@ import tqdm
 from absl import app, flags
 from ml_collections import config_flags
 from tensorboardX import SummaryWriter
+import wandb
 
 import wrappers
 from dataset_utils import D4RLDataset, split_into_trajectories
 from evaluation import evaluate
 from learner import Learner
+from utils import get_user_flags
 
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string('env_name', 'halfcheetah-expert-v2', 'Environment name.')
-flags.DEFINE_string('save_dir', './tmp/', 'Tensorboard logging dir.')
+flags.DEFINE_string('save_dir', './result/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
@@ -25,6 +27,7 @@ flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
+flags.DEFINE_string('tag', '', 'tag of the run.')
 config_flags.DEFINE_config_file(
     'config',
     'default.py',
@@ -77,8 +80,8 @@ def make_env_and_dataset(env_name: str,
 
 
 def main(_):
-    summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, 'tb',
-                                                str(FLAGS.seed)),
+    FLAGS.save_dir = os.path.join(FLAGS.save_dir, FLAGS.tag, FLAGS.env_name, str(FLAGS.seed))
+    summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, 'tb'),
                                    write_to_disk=True)
     os.makedirs(FLAGS.save_dir, exist_ok=True)
 
@@ -90,6 +93,11 @@ def main(_):
                     env.action_space.sample()[np.newaxis],
                     max_steps=FLAGS.max_steps,
                     **kwargs)
+
+    # set up wandb
+    wandb.init(project="IQL", config={"env": FLAGS.env_name, "seed": FLAGS.seed, "tag": FLAGS.tag})
+    # eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
+    # wandb.log({"eval return": eval_stats['return']}, step=0)
 
     eval_returns = []
     for i in tqdm.tqdm(range(1, FLAGS.max_steps + 1),
@@ -103,6 +111,7 @@ def main(_):
             for k, v in update_info.items():
                 if v.ndim == 0:
                     summary_writer.add_scalar(f'training/{k}', v, i)
+                    wandb.log({f"training/{k}": v}, step=i)
                 else:
                     summary_writer.add_histogram(f'training/{k}', v, i)
             summary_writer.flush()
@@ -112,9 +121,12 @@ def main(_):
 
             for k, v in eval_stats.items():
                 summary_writer.add_scalar(f'evaluation/average_{k}s', v, i)
+                wandb.log({f'evaluation/{k}': v}, step=i)
+
             summary_writer.flush()
 
             eval_returns.append((i, eval_stats['return']))
+
             np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                        eval_returns,
                        fmt=['%d', '%.1f'])
