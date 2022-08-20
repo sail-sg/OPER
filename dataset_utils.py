@@ -1,10 +1,13 @@
 import collections
 from typing import Optional
-
+from typing import Any
 import d4rl
 import gym
 import numpy as np
 from tqdm import tqdm
+
+Array = Any
+
 
 Batch = collections.namedtuple(
     'Batch',
@@ -46,11 +49,41 @@ def merge_trajectories(trajs):
             next_observations)
 
 
+class RandSampler(object):
+  """A random sampler."""
+
+  def __init__(self, max_size: int, batch_size: int = 1) -> None:
+    self._max_size = max_size
+    self._batch_size = batch_size
+
+  def sample(self):
+    """Return an array of sampled indices."""
+    return np.random.randint(self._max_size, size=self._batch_size)
+
+
+class PrefetchBalancedSampler(object):
+  """A prefetch balanced sampler."""
+
+  def __init__(self, probs: Array, max_size: int, batch_size: int, n_prefetch: int) -> None:
+    self._max_size = max_size
+    self._batch_size = batch_size
+    self.n_prefetch = min(n_prefetch, max_size//batch_size)
+    self._probs = probs / np.sum(probs)
+    self.cnt = self.n_prefetch - 1
+  
+  def sample(self):
+    self.cnt = (self.cnt+1)%self.n_prefetch
+    if self.cnt == 0:
+      self.indices = np.random.choice(self._max_size, 
+          size=self._batch_size * self.n_prefetch, p=self._probs)
+    return self.indices[self.cnt*self._batch_size : (self.cnt+1)*self._batch_size]
+
+
 class Dataset(object):
     def __init__(self, observations: np.ndarray, actions: np.ndarray,
                  rewards: np.ndarray, masks: np.ndarray,
                  dones_float: np.ndarray, next_observations: np.ndarray,
-                 size: int):
+                 size: int, batch_size: int, sample: str, base_prob: float):
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
@@ -58,9 +91,41 @@ class Dataset(object):
         self.dones_float = dones_float
         self.next_observations = next_observations
         self.size = size
+        self.returns = self.compute_return()
+        self.batch_size = batch_size
+        self.sampler = self.make_sampler(sample, base_prob)
 
-    def sample(self, batch_size: int) -> Batch:
-        indx = np.random.randint(self.size, size=batch_size)
+    def compute_return(self):
+        returns, ret, start = [], 0, 0
+        for i in range(self.size):
+            ret = ret+self.rewards[i]
+            if self.dones_float[i]: 
+                returns.extend([ret]*(i-start+1))
+                start = i + 1
+                ret = 0
+        assert len(returns) == self.size
+        return np.stack(returns)
+
+    def make_sampler(self, sample: str, base_prob: float):
+        if sample == 'uniform':
+            return RandSampler(self.size, self.batch_size)
+        if 'balance' in sample:
+            if 'reward' in sample:
+                dist = self.rewards
+            elif 'return' in sample:
+                dist = self.returns
+            else:
+                raise NotImplemented
+            probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+            # probs = np.sqrt(probs)
+            return PrefetchBalancedSampler(probs, self.size, self.batch_size, n_prefetch=1000)
+        else:
+            raise NotImplemented
+
+    def sample(self) -> Batch:
+        # indx = np.random.randint(self.size, size=self.batch_size)
+        indx = self.sampler.sample()
+
         return Batch(observations=self.observations[indx],
                      actions=self.actions[indx],
                      rewards=self.rewards[indx],
@@ -71,6 +136,9 @@ class Dataset(object):
 class D4RLDataset(Dataset):
     def __init__(self,
                  env: gym.Env,
+                 batch_size: int,
+                 sample: str,
+                 base_prob: float,
                  clip_to_eps: bool = True,
                  eps: float = 1e-5):
         dataset = d4rl.qlearning_dataset(env)
@@ -98,7 +166,10 @@ class D4RLDataset(Dataset):
                          dones_float=dones_float.astype(np.float32),
                          next_observations=dataset['next_observations'].astype(
                              np.float32),
-                         size=len(dataset['observations']))
+                         size=len(dataset['observations']),
+                         batch_size=batch_size,
+                         sample=sample,
+                         base_prob=base_prob)
 
 
 class ReplayBuffer(Dataset):

@@ -5,6 +5,9 @@ scripts
 sweep.sh
 tmp
 wandb
+output_test_job.yaml
+output_test_svc.yaml
+.vscode
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

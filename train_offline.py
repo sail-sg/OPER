@@ -25,6 +25,7 @@ flags.DEFINE_integer('eval_episodes', 10,
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
+flags.DEFINE_string('sample', 'uniform', '')
 flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
 flags.DEFINE_string('tag', '', 'tag of the run.')
@@ -66,7 +67,7 @@ def make_env_and_dataset(env_name: str,
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
 
-    dataset = D4RLDataset(env)
+    dataset = D4RLDataset(env, FLAGS.batch_size, FLAGS.sample, FLAGS.config.base_prob)
 
     if 'antmaze' in FLAGS.env_name:
         dataset.rewards -= 1.0
@@ -82,7 +83,8 @@ def make_env_and_dataset(env_name: str,
 def main(_):
     FLAGS.save_dir = os.path.join(FLAGS.save_dir, FLAGS.tag, FLAGS.env_name, str(FLAGS.seed))
     summary_writer = SummaryWriter(os.path.join(FLAGS.save_dir, 'tb'),
-                                   write_to_disk=True)
+                                #    write_to_disk=True)
+                                   write_to_disk=False)
     os.makedirs(FLAGS.save_dir, exist_ok=True)
 
     env, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
@@ -95,7 +97,8 @@ def main(_):
                     **kwargs)
 
     # set up wandb
-    wandb.init(project="IQL", config={"env": FLAGS.env_name, "seed": FLAGS.seed, "tag": FLAGS.tag})
+    wandb.init(project="IQL", config={"env": FLAGS.env_name, "seed": FLAGS.seed, 
+        "sampler": FLAGS.sample, "base_prob": FLAGS.config.base_prob, "tag": FLAGS.tag})
     # eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
     # wandb.log({"eval return": eval_stats['return']}, step=0)
 
@@ -103,7 +106,7 @@ def main(_):
     for i in tqdm.tqdm(range(1, FLAGS.max_steps + 1),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
-        batch = dataset.sample(FLAGS.batch_size)
+        batch = dataset.sample()
 
         update_info = agent.update(batch)
 

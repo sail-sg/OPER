@@ -60,7 +60,8 @@ class Learner(object):
                  temperature: float = 0.1,
                  dropout_rate: Optional[float] = None,
                  max_steps: Optional[int] = None,
-                 opt_decay_schedule: str = "cosine"):
+                 opt_decay_schedule: str = "cosine",
+                 **kwargs):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1801.01290
         """
