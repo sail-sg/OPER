@@ -43,6 +43,7 @@ class NormalTanhPolicy(nn.Module):
                                 kernel_init=default_init(
                                     self.log_std_scale))(outputs)
         else:
+            # learnable parameters as std, initialized as zero.
             log_stds = self.param('log_stds', nn.initializers.zeros,
                                   (self.action_dim, ))
 

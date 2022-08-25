@@ -18,6 +18,6 @@ def get_config():
 
     config.tau = 0.005  # For soft target updates.
 
-    config.base_prob = 0.0
+    config.base_prob = 0.2
 
     return config

@@ -116,7 +116,10 @@ class Dataset(object):
                 dist = self.returns
             else:
                 raise NotImplemented
-            probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+            if 'inverse' not in sample:
+                probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+            else:
+                probs = 1 - (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
             # probs = np.sqrt(probs)
             return PrefetchBalancedSampler(probs, self.size, self.batch_size, n_prefetch=1000)
         else:
