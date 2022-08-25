@@ -192,12 +192,11 @@ class Learner(object):
         self.value.save(dir / 'value.ckpt')
 
     def load(self, dir):
-        self.critic.load(dir / 'critic.ckpt')
-        self.target_critic.load(dir / 'target_critic.ckpt')
-        self.actor.load(dir / 'actor.ckpt')
-        self.value.load(dir / 'value.ckpt')
+        self.critic = self.critic.load(dir / 'critic.ckpt')
+        self.target_critic = self.target_critic.load(dir / 'target_critic.ckpt')
+        self.actor = self.actor.load(dir / 'actor.ckpt')
+        self.value = self.value.load(dir / 'value.ckpt')
         
-
     def reinitialize_output_layer(self):
         raise NotImplementedError
 

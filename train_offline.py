@@ -34,7 +34,7 @@ flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'naive'],
                 'representation finutune schemes') 
 flags.DEFINE_boolean('reinitialize', False, 'reinitialize the output layer')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
-flags.DEFINE_integer('max_steps', int(1e6), 'Number of training steps.')
+flags.DEFINE_integer('max_steps', int(1e6), 'Number of total training steps.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
@@ -169,9 +169,14 @@ def main(_):
     if FLAGS.reinitialize:
         agent.reinitialize_output_layer()
 
+    # eval
+    eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
+    for k, v in eval_stats.items():
+        summary_writer.add_scalar(f'offline/evaluation/average_{k}s', v, i)
+        wandb.log({f'offline/evaluation/{k}': v}, step=i)
 
     eval_returns = []
-    for i in tqdm.tqdm(range(1, FLAGS.max_steps + 1),
+    for i in tqdm.tqdm(range(FLAGS.pretrain_steps + 1, FLAGS.max_steps + 1),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
         batch = dataset.sample()
