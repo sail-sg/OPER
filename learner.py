@@ -10,6 +10,7 @@ from flax.core.frozen_dict import unfreeze, freeze
 
 import policy
 import value_net
+from encoder import Encoder
 from actor import update as awr_update_actor
 from common import Batch, InfoDict, Model, PRNGKey
 from critic import update_q, update_v
@@ -91,8 +92,13 @@ class Learner(object):
         value_optimiser = optax.adam(learning_rate=value_lr)
 
         if self.finetune:
-            actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'output', 'log_stds': 'output'})
-            single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'output'}}
+            # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'output', 'log_stds': 'output'})
+            # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'output'}}
+            # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
+            # value_param_labels = freeze(single_critic_labels)
+
+            actor_param_labels = freeze({'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'output'}, 'Dense_0': 'output', 'log_stds': 'output'})
+            single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'output', 'Dense_2': 'output'}}
             critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
             value_param_labels = freeze(single_critic_labels)
         
@@ -108,15 +114,30 @@ class Learner(object):
 
             # freeze  representation parameters (i.e. set the gradient of these parameters to zero)
             if self.rep_module == 'backbone':
+                # retrain pred
+                # actor_optimiser = optax.multi_transform(
+                #     {'rep': optax.set_to_zero(), 'output': actor_optimiser},
+                #     actor_param_labels)
+                # critic_optimiser = optax.multi_transform(
+                #     {'rep': optax.set_to_zero(), 'output': critic_optimiser},
+                #     critic_param_labels)
+                # value_optimiser = optax.multi_transform(
+                #     {'rep': optax.set_to_zero(), 'output': value_optimiser},
+                #     value_param_labels)
+
+                # retrain repr
                 actor_optimiser = optax.multi_transform(
-                    {'rep': optax.set_to_zero(), 'output': actor_optimiser},
+                    {'rep': actor_optimiser, 'output': optax.set_to_zero()},
                     actor_param_labels)
                 critic_optimiser = optax.multi_transform(
-                    {'rep': optax.set_to_zero(), 'output': critic_optimiser},
+                    {'rep': critic_optimiser, 'output': optax.set_to_zero()},
                     critic_param_labels)
                 value_optimiser = optax.multi_transform(
-                    {'rep': optax.set_to_zero(), 'output': value_optimiser},
+                    {'rep': value_optimiser, 'output': optax.set_to_zero()},
                     value_param_labels)
+
+                # retrain all
+                # pass
             elif self.rep_module == 'encoder':
                 # TODO
                 pass
@@ -149,10 +170,6 @@ class Learner(object):
 
         target_critic = Model.create(
             critic_def, inputs=[critic_key, observations, actions])
-
-        if encoder:
-            # TODO
-            pass
 
         self.actor = actor
         self.critic = critic

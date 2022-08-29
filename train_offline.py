@@ -27,14 +27,14 @@ flags.DEFINE_boolean('encoder', False, 'an encoder for actor and critic input')
 flags.DEFINE_enum('rep_module', 'backbone', ['backbone', 'encoder'], 'The network for representation learning')
 # pretrain
 flags.DEFINE_enum('pretrain_sample', 'uniform', ['uniform', 'return-balance', 'inverse-return-balance'], '')
-flags.DEFINE_integer('pretrain_steps', int(2e5), '')
+flags.DEFINE_integer('pretrain_steps', int(1e6), '')
 # offline learning
 flags.DEFINE_enum('sample', 'return-balance', ['uniform', 'return-balance', 'inverse-return-balance'], '')
 flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'naive'], 
                 'representation finutune schemes') 
 flags.DEFINE_boolean('reinitialize', False, 'reinitialize the output layer')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
-flags.DEFINE_integer('max_steps', int(1e6), 'Number of total training steps.')
+flags.DEFINE_integer('max_steps', int(2e6), 'Number of total training steps.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')

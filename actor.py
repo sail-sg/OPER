@@ -15,8 +15,8 @@ def update(key: PRNGKey, actor: Model, critic: Model, value: Model,
     exp_a = jnp.exp((q - v) * temperature)
     exp_a = jnp.minimum(exp_a, 100.0)
 
-    def actor_loss_fn(actor_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
-        dist = actor.apply({'params': actor_params},
+    def actor_loss_fn(actor_params: Params, ) -> Tuple[jnp.ndarray, InfoDict]:
+        dist = actor.apply({'params': actor_params},  # forward prog
                            batch.observations,
                            training=True,
                            rngs={'dropout': key})
