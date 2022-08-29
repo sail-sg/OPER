@@ -99,3 +99,9 @@ class Model:
         with open(load_path, 'rb') as f:
             params = flax.serialization.from_bytes(self.params, f.read())
         return self.replace(params=params)
+
+    def load_encoder(self, load_path: str) -> 'Model':
+        with open(load_path, 'rb') as f:
+            encoder_params = flax.serialization.from_bytes(self.params['encoder'], f.read())
+        self.params['encoder'] = encoder_params
+        return self.replace(params=self.params)

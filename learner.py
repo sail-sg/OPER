@@ -63,7 +63,8 @@ class Learner(object):
                  temperature: float = 0.1,
                  dropout_rate: Optional[float] = None,
                  max_steps: Optional[int] = None,
-                 finetune: str = 'freeze',
+                 finetune: str = '',
+                 retrain: str = '',
                  encoder: bool = False,
                  rep_module: str = '',
                  opt_decay_schedule: str = "cosine",
@@ -91,56 +92,67 @@ class Learner(object):
         critic_optimiser = optax.adam(learning_rate=critic_lr)
         value_optimiser = optax.adam(learning_rate=value_lr)
 
-        if self.finetune:
-            # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'output', 'log_stds': 'output'})
-            # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'output'}}
-            # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-            # value_param_labels = freeze(single_critic_labels)
+        if encoder:
+            encoder_hidden_dim = (256,256)
+            state_embedding_dim = 256
+            encoder_def = Encoder(encoder_hidden_dim, state_embedding_dim)
+        else:
+            encoder_def = None
 
-            actor_param_labels = freeze({'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'output'}, 'Dense_0': 'output', 'log_stds': 'output'})
-            single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'output', 'Dense_2': 'output'}}
-            critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-            value_param_labels = freeze(single_critic_labels)
+        if self.finetune and self.finetune != 'none':
+            # freeze representation parameters (i.e. set the gradient of these parameters to zero)
+            # if self.rep_module == 'backbone':
+            #     pass
+            # elif self.rep_module == 'encoder':
+            #     pass
+            # else:
+            #     raise NotImplementedError
+            if encoder:
+                actor_param_labels = freeze({'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
+                critic_param_labels = freeze({'Encoder_0': 'rep', 'Critic_0': 'pred', 'Critic_1': 'pred'})
+                value_param_labels = freeze({'Encoder_0': 'rep', 'MLP_0': 'pred'})
+            else:
+                # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
+                # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
+                # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
+                # value_param_labels = freeze(single_critic_labels)
+                # treat the first layer as representation module
+                actor_param_labels = freeze({'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'pred'}, 'Dense_0': 'pred', 'log_stds': 'pred'})
+                single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'pred', 'Dense_2': 'pred'}}
+                critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
+                value_param_labels = freeze(single_critic_labels)
         
-            if self.finetune == 'naive':
-                pass
-            elif self.finetune == 'freeze':
-                pass
+            if self.finetune == 'freeze':
+                actor_optimiser2 = optax.set_to_zero()
+                critic_optimiser2 = optax.set_to_zero()
+                value_optimiser2 = optax.set_to_zero()
             elif self.finetune == 'recuded-lr':
-                # TODO: set different lr for head and tail
-                pass
+                actor_optimiser2 = optax.adam(learning_rate=actor_lr*0.1)
+                critic_optimiser2 = optax.adam(learning_rate=critic_lr*0.1)
+                value_optimiser2 = optax.adam(learning_rate=value_lr*0.1)
             else:
                 raise NotImplementedError
 
-            # freeze  representation parameters (i.e. set the gradient of these parameters to zero)
-            if self.rep_module == 'backbone':
-                # retrain pred
-                # actor_optimiser = optax.multi_transform(
-                #     {'rep': optax.set_to_zero(), 'output': actor_optimiser},
-                #     actor_param_labels)
-                # critic_optimiser = optax.multi_transform(
-                #     {'rep': optax.set_to_zero(), 'output': critic_optimiser},
-                #     critic_param_labels)
-                # value_optimiser = optax.multi_transform(
-                #     {'rep': optax.set_to_zero(), 'output': value_optimiser},
-                #     value_param_labels)
-
-                # retrain repr
+            if retrain == 'pred':
                 actor_optimiser = optax.multi_transform(
-                    {'rep': actor_optimiser, 'output': optax.set_to_zero()},
+                    {'rep': actor_optimiser2, 'pred': actor_optimiser},
                     actor_param_labels)
                 critic_optimiser = optax.multi_transform(
-                    {'rep': critic_optimiser, 'output': optax.set_to_zero()},
+                    {'rep': critic_optimiser2, 'pred': critic_optimiser},
                     critic_param_labels)
                 value_optimiser = optax.multi_transform(
-                    {'rep': value_optimiser, 'output': optax.set_to_zero()},
+                    {'rep': value_optimiser2, 'pred': value_optimiser},
                     value_param_labels)
-
-                # retrain all
-                # pass
-            elif self.rep_module == 'encoder':
-                # TODO
-                pass
+            elif retrain == 'repr':
+                actor_optimiser = optax.multi_transform(
+                    {'rep': actor_optimiser, 'pred': actor_optimiser2},
+                    actor_param_labels)
+                critic_optimiser = optax.multi_transform(
+                    {'rep': critic_optimiser, 'pred': critic_optimiser2},
+                    critic_param_labels)
+                value_optimiser = optax.multi_transform(
+                    {'rep': value_optimiser, 'pred': value_optimiser2},
+                    value_param_labels)
             else:
                 raise NotImplementedError
 
@@ -148,6 +160,7 @@ class Learner(object):
         action_dim = actions.shape[-1]
         actor_def = policy.NormalTanhPolicy(hidden_dims,
                                             action_dim,
+                                            encoder=encoder_def,
                                             log_std_scale=1e-3,
                                             log_std_min=-5.0,
                                             dropout_rate=dropout_rate,
@@ -158,12 +171,12 @@ class Learner(object):
                              inputs=[actor_key, observations],
                              tx=actor_optimiser)
 
-        critic_def = value_net.DoubleCritic(hidden_dims)  # nn.module
+        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_def)  # nn.module
         critic = Model.create(critic_def,     # Model (flax.struct.dataclass)
                               inputs=[critic_key, observations, actions],
                               tx=critic_optimiser)
 
-        value_def = value_net.ValueCritic(hidden_dims)
+        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_def)
         value = Model.create(value_def,
                              inputs=[value_key, observations],
                              tx=value_optimiser)

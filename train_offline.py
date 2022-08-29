@@ -30,11 +30,11 @@ flags.DEFINE_enum('pretrain_sample', 'uniform', ['uniform', 'return-balance', 'i
 flags.DEFINE_integer('pretrain_steps', int(1e6), '')
 # offline learning
 flags.DEFINE_enum('sample', 'return-balance', ['uniform', 'return-balance', 'inverse-return-balance'], '')
-flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'naive'], 
-                'representation finutune schemes') 
+flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'none'], 'representation finutune schemes') 
+flags.DEFINE_enum('retrain', 'repr', ['repr', 'pred'], 'retrain which part of network') 
 flags.DEFINE_boolean('reinitialize', False, 'reinitialize the output layer')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
-flags.DEFINE_integer('max_steps', int(2e6), 'Number of total training steps.')
+flags.DEFINE_integer('offline_steps', int(2e6), 'Number of total training steps.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
 flags.DEFINE_boolean('tqdm', True, 'Use tqdm progress bar.')
@@ -66,7 +66,7 @@ def normalize(dataset):
     dataset.rewards *= 1000.0
 
 
-def make_env_and_dataset(env_name: str,
+def make_env_and_dataset(env_name: s11tr,
                          seed: int) -> Tuple[gym.Env, D4RLDataset]:
     pretrain_env = gym.make(env_name)
     pretrain_env = wrappers.EpisodeMonitor(pretrain_env)
@@ -115,59 +115,63 @@ def main(_):
     pretrain_env, env, pretrain_dataset, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
 
     # pretrain
-    eval_returns = []
-    rep_agent = Learner(FLAGS.seed,
-                env.observation_space.sample()[np.newaxis],
-                env.action_space.sample()[np.newaxis],
-                max_steps=FLAGS.max_steps,
-                finetune=None,
-                encoder = FLAGS.encoder,
-                **kwargs)
-    for i in tqdm.tqdm(range(1, FLAGS.pretrain_steps + 1),
-                       smoothing=0.1,
-                       disable=not FLAGS.tqdm):
-        batch = pretrain_dataset.sample()
+    if FLAGS.pretrain_steps > 0:
 
-        update_info = rep_agent.update(batch)
+        eval_returns = []
+        rep_agent = Learner(FLAGS.seed,
+                    env.observation_space.sample()[np.newaxis],
+                    env.action_space.sample()[np.newaxis],
+                    max_steps=FLAGS.pretrain_steps,
+                    finetune=None,
+                    encoder = FLAGS.encoder,
+                    **kwargs)
+        for i in tqdm.tqdm(range(1, FLAGS.pretrain_steps + 1),
+                        smoothing=0.1,
+                        disable=not FLAGS.tqdm):
+            batch = pretrain_dataset.sample()
 
-        if i % FLAGS.log_interval == 0:
-            for k, v in update_info.items():
-                if v.ndim == 0:
-                    summary_writer.add_scalar(f'pretrain/training/{k}', v, i)
-                    wandb.log({f"pretrain/training_{k}": v}, step=i)
-                else:
-                    summary_writer.add_histogram(f'pretrain/training/{k}', v, i)
-            summary_writer.flush()
+            update_info = rep_agent.update(batch)
 
-        if i % FLAGS.eval_interval == 0:
-            eval_stats = evaluate(rep_agent, pretrain_env, FLAGS.eval_episodes)
+            if i % FLAGS.log_interval == 0:
+                for k, v in update_info.items():
+                    if v.ndim == 0:
+                        summary_writer.add_scalar(f'pretrain/training/{k}', v, i)
+                        wandb.log({f"pretrain/training_{k}": v}, step=i)
+                    else:
+                        summary_writer.add_histogram(f'pretrain/training/{k}', v, i)
+                summary_writer.flush()
 
-            for k, v in eval_stats.items():
-                summary_writer.add_scalar(f'pretrain/evaluation/average_{k}s', v, i)
-                wandb.log({f'pretrain/evaluation/{k}': v}, step=i)
+            if i % FLAGS.eval_interval == 0:
+                eval_stats = evaluate(rep_agent, pretrain_env, FLAGS.eval_episodes)
 
-            summary_writer.flush()
+                for k, v in eval_stats.items():
+                    summary_writer.add_scalar(f'pretrain/evaluation/average_{k}s', v, i)
+                    wandb.log({f'pretrain/evaluation/{k}': v}, step=i)
 
-            # eval_returns.append((i, eval_stats['return']))
-            # np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
-            #            eval_returns,
-            #            fmt=['%d', '%.1f'])
+                summary_writer.flush()
 
-    # save and load
-    rep_agent.save(FLAGS.save_dir / 'ckpt')
+                # eval_returns.append((i, eval_stats['return']))
+                # np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
+                #            eval_returns,
+                #            fmt=['%d', '%.1f'])
+
+        # save and load
+        rep_agent.save(FLAGS.save_dir / 'ckpt')
 
     # offline learning
     agent = Learner(FLAGS.seed,
                 env.observation_space.sample()[np.newaxis],
                 env.action_space.sample()[np.newaxis],
-                max_steps=FLAGS.max_steps,
+                max_steps=FLAGS.offline_steps,
                 finetune=FLAGS.finetune,
                 encoder = FLAGS.encoder,
                 rep_module=FLAGS.rep_module,
+                retrain=FLAGS.retrain,
                 **kwargs)
-    agent.load(FLAGS.save_dir / 'ckpt')
-    if FLAGS.reinitialize:
-        agent.reinitialize_output_layer()
+    if FLAGS.pretrain_steps > 0:
+        agent.load(FLAGS.save_dir / 'ckpt')
+        if FLAGS.reinitialize:
+            agent.reinitialize_output_layer()
 
     # eval
     eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
@@ -176,7 +180,7 @@ def main(_):
         wandb.log({f'offline/evaluation/{k}': v}, step=i)
 
     eval_returns = []
-    for i in tqdm.tqdm(range(FLAGS.pretrain_steps + 1, FLAGS.max_steps + 1),
+    for i in tqdm.tqdm(range(FLAGS.pretrain_steps + 1, FLAGS.pretrain_steps + FLAGS.offline_steps + 1),
                        smoothing=0.1,
                        disable=not FLAGS.tqdm):
         batch = dataset.sample()
