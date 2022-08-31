@@ -1,7 +1,7 @@
 """Implementations of algorithms for continuous control."""
 
 from typing import Optional, Sequence, Tuple
-
+import sys
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -83,23 +83,39 @@ class Learner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, value_key = jax.random.split(rng, 4)
 
-        if opt_decay_schedule == "cosine":
-            schedule_fn = optax.cosine_decay_schedule(-actor_lr, max_steps)
-            actor_optimiser = optax.chain(optax.scale_by_adam(),
-                                optax.scale_by_schedule(schedule_fn))
-        else:
-            actor_optimiser = optax.adam(learning_rate=actor_lr)
-        critic_optimiser = optax.adam(learning_rate=critic_lr)
-        value_optimiser = optax.adam(learning_rate=value_lr)
-
         if encoder:
             encoder_hidden_dim = (256,256)
             state_embedding_dim = 256
             encoder_def = Encoder(encoder_hidden_dim, state_embedding_dim)
         else:
             encoder_def = None
+        
+        if not self.finetune or self.finetune == 'none':
+            if opt_decay_schedule == "cosine":
+                # negative lr for scale tranformation
+                # schedule_fn = optax.cosine_decay_schedule(-actor_lr, max_steps)
+                # actor_optimiser = optax.chain(optax.scale_by_adam(),
+                #                     optax.scale_by_schedule(schedule_fn))
 
-        if self.finetune and self.finetune != 'none':
+                schedule_fn = optax.cosine_decay_schedule(actor_lr, max_steps)
+                actor_optimiser = optax.adamw(schedule_fn)
+                                    
+            else:
+                actor_optimiser = optax.adamw(learning_rate=actor_lr)
+            critic_optimiser = optax.adamw(learning_rate=critic_lr)
+            value_optimiser = optax.adamw(learning_rate=value_lr)
+
+        else:
+            # TODO: Adam -> AdamW
+            # 0.1 learning rate
+            if opt_decay_schedule == "cosine":
+                schedule_fn = optax.cosine_decay_schedule(-actor_lr*0.1, max_steps)
+                actor_optimiser = optax.chain(optax.scale_by_adam(),
+                                    optax.scale_by_schedule(schedule_fn))
+            else:
+                actor_optimiser = optax.adam(learning_rate=actor_lr*0.1)
+            critic_optimiser = optax.adam(learning_rate=critic_lr*0.1)
+            value_optimiser = optax.adam(learning_rate=value_lr*0.1)
             # freeze representation parameters (i.e. set the gradient of these parameters to zero)
             # if self.rep_module == 'backbone':
             #     pass
@@ -108,9 +124,9 @@ class Learner(object):
             # else:
             #     raise NotImplementedError
             if encoder:
-                actor_param_labels = freeze({'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
-                critic_param_labels = freeze({'Encoder_0': 'rep', 'Critic_0': 'pred', 'Critic_1': 'pred'})
-                value_param_labels = freeze({'Encoder_0': 'rep', 'MLP_0': 'pred'})
+                actor_param_labels = freeze({'encoder': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
+                critic_param_labels = freeze({'encoder': 'rep', 'Critic_0': 'pred', 'Critic_1': 'pred'})
+                value_param_labels = freeze({'encoder': 'rep', 'MLP_0': 'pred'})
             else:
                 # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
                 # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
@@ -121,15 +137,14 @@ class Learner(object):
                 single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'pred', 'Dense_2': 'pred'}}
                 critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
                 value_param_labels = freeze(single_critic_labels)
-        
             if self.finetune == 'freeze':
                 actor_optimiser2 = optax.set_to_zero()
                 critic_optimiser2 = optax.set_to_zero()
                 value_optimiser2 = optax.set_to_zero()
-            elif self.finetune == 'recuded-lr':
-                actor_optimiser2 = optax.adam(learning_rate=actor_lr*0.1)
-                critic_optimiser2 = optax.adam(learning_rate=critic_lr*0.1)
-                value_optimiser2 = optax.adam(learning_rate=value_lr*0.1)
+            elif self.finetune == 'reduced-lr':
+                actor_optimiser2 = optax.adam(learning_rate=actor_lr*0.01)
+                critic_optimiser2 = optax.adam(learning_rate=critic_lr*0.01)
+                value_optimiser2 = optax.adam(learning_rate=value_lr*0.01)
             else:
                 raise NotImplementedError
 
@@ -155,7 +170,6 @@ class Learner(object):
                     value_param_labels)
             else:
                 raise NotImplementedError
-
 
         action_dim = actions.shape[-1]
         actor_def = policy.NormalTanhPolicy(hidden_dims,
