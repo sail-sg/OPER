@@ -1,8 +1,7 @@
 from typing import Tuple
-
+import jax
 import jax.numpy as jnp
-
-from common import Batch, InfoDict, Model, Params
+from common import Batch, InfoDict, Model, Params, PRNGKey
 
 
 def loss(diff, expectile=0.8):
@@ -10,14 +9,14 @@ def loss(diff, expectile=0.8):
     return weight * (diff**2)
 
 
-def update_v(critic: Model, value: Model, batch: Batch,
+def update_v(key: PRNGKey, critic: Model, value: Model, batch: Batch,
              expectile: float) -> Tuple[Model, InfoDict]:
     actions = batch.actions
-    q1, q2 = critic(batch.observations, actions)
+    q1, q2 = critic(batch.observations, actions, training=False)
     q = jnp.minimum(q1, q2)
 
     def value_loss_fn(value_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
-        v = value.apply({'params': value_params}, batch.observations)
+        v = value.apply({'params': value_params}, batch.observations, rngs={'dropout': key})
         value_loss = loss(q - v, expectile).mean()
         return value_loss, {
             'value_loss': value_loss,
@@ -29,15 +28,16 @@ def update_v(critic: Model, value: Model, batch: Batch,
     return new_value, info
 
 
-def update_q(critic: Model, target_value: Model, batch: Batch,
+def update_q(key: PRNGKey, critic: Model, target_value: Model, batch: Batch,
              discount: float) -> Tuple[Model, InfoDict]:
-    next_v = target_value(batch.next_observations)
+    key1, key2 = jax.random.split(key, 2)
+    next_v = target_value(batch.next_observations, training=False)
 
     target_q = batch.rewards + discount * batch.masks * next_v
 
     def critic_loss_fn(critic_params: Params) -> Tuple[jnp.ndarray, InfoDict]:
         q1, q2 = critic.apply({'params': critic_params}, batch.observations,
-                              batch.actions)
+                              batch.actions, rngs={'dropout': key2})
         critic_loss = ((q1 - target_q)**2 + (q2 - target_q)**2).mean()
         return critic_loss, {
             'critic_loss': critic_loss,

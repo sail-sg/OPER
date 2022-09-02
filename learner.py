@@ -31,13 +31,13 @@ def _update_jit(
     target_critic: Model, batch: Batch, discount: float, tau: float,
     expectile: float, temperature: float
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
-
-    new_value, value_info = update_v(target_critic, value, batch, expectile)
-    key, rng = jax.random.split(rng)
-    new_actor, actor_info = awr_update_actor(key, actor, target_critic,
+    
+    key0, key1, key2, rng = jax.random.split(rng, 4)
+    new_value, value_info = update_v(key0, target_critic, value, batch, expectile)
+    new_actor, actor_info = awr_update_actor(key1, actor, target_critic,
                                              new_value, batch, temperature)
 
-    new_critic, critic_info = update_q(critic, new_value, batch, discount)
+    new_critic, critic_info = update_q(key2, critic, new_value, batch, discount)
 
     new_target_critic = target_update(new_critic, target_critic, tau)
 
@@ -68,6 +68,9 @@ class Learner(object):
                  encoder: bool = False,
                  rep_module: str = '',
                  opt_decay_schedule: str = "cosine",
+                 last_layer_norm: bool = False,
+                 batch_norm: bool = False,
+                 max_gradient_norm: float = 1.0,
                  **kwargs):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1801.01290
@@ -81,12 +84,16 @@ class Learner(object):
         self.rep_module = rep_module
 
         rng = jax.random.PRNGKey(seed)
-        rng, actor_key, critic_key, value_key = jax.random.split(rng, 4)
+        rng, actor_key, critic_key, value_key, \
+        dropout_key1, dropout_key2, dropout_key3 = jax.random.split(rng, 7)
 
         if encoder:
-            encoder_hidden_dim = (256,256)
-            state_embedding_dim = 256
-            encoder_def = Encoder(encoder_hidden_dim, state_embedding_dim)
+            encoder_hidden_dim = (256, 128)
+            # encoder_hidden_dim = (64,)
+            # encoder_hidden_dim = ()
+            state_embedding_dim = 128
+            encoder_def = Encoder(encoder_hidden_dim, state_embedding_dim, 
+                last_layer_norm=last_layer_norm, batch_norm=batch_norm)
         else:
             encoder_def = None
         
@@ -104,6 +111,11 @@ class Learner(object):
                 actor_optimiser = optax.adamw(learning_rate=actor_lr)
             critic_optimiser = optax.adamw(learning_rate=critic_lr)
             value_optimiser = optax.adamw(learning_rate=value_lr)
+
+            actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
+            critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
+            value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
+
 
         else:
             # TODO: Adam -> AdamW
@@ -182,21 +194,21 @@ class Learner(object):
                                             tanh_squash_distribution=False)
 
         actor = Model.create(actor_def,
-                             inputs=[actor_key, observations],
+                             inputs=[{'params': actor_key, 'dropout': dropout_key1}, observations],
                              tx=actor_optimiser)
 
         critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_def)  # nn.module
         critic = Model.create(critic_def,     # Model (flax.struct.dataclass)
-                              inputs=[critic_key, observations, actions],
+                              inputs=[{'params': critic_key, 'dropout': dropout_key2}, observations, actions],
                               tx=critic_optimiser)
 
         value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_def)
         value = Model.create(value_def,
-                             inputs=[value_key, observations],
+                             inputs=[{'params': value_key, 'dropout': dropout_key3}, observations],
                              tx=value_optimiser)
 
         target_critic = Model.create(
-            critic_def, inputs=[critic_key, observations, actions])
+            critic_def, inputs=[{'params': critic_key, 'dropout': dropout_key2}, observations, actions])
 
         self.actor = actor
         self.critic = critic

@@ -1,3 +1,4 @@
+from random import triangular
 from typing import Callable, Sequence, Tuple, Optional
 
 import jax.numpy as jnp
@@ -11,9 +12,9 @@ class ValueCritic(nn.Module):
     encoder: Optional[nn.Module] = None
 
     @nn.compact
-    def __call__(self, observations: jnp.ndarray) -> jnp.ndarray:
+    def __call__(self, observations: jnp.ndarray, training=True) -> jnp.ndarray:
         if self.encoder:
-            observations = self.encoder(observations)
+            observations = self.encoder(observations, training)
         critic = MLP((*self.hidden_dims, 1))(observations)
         return jnp.squeeze(critic, -1)
 
@@ -25,9 +26,9 @@ class Critic(nn.Module):
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> jnp.ndarray:
+                 actions: jnp.ndarray, training=True) -> jnp.ndarray:
         if self.encoder:
-            observations = self.encoder(observations)
+            observations = self.encoder(observations, training)
         inputs = jnp.concatenate([observations, actions], -1)
         critic = MLP((*self.hidden_dims, 1),
                      activations=self.activations)(inputs)
@@ -41,11 +42,11 @@ class DoubleCritic(nn.Module):
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
-                 actions: jnp.ndarray) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        if self.encoder:
-            observations = self.encoder(observations)
-        critic1 = Critic(self.hidden_dims,
+                 actions: jnp.ndarray, training=True) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        # if self.encoder:
+        #     observations = self.encoder(observations, training)
+        critic1 = Critic(self.hidden_dims, encoder=self.encoder,
                          activations=self.activations)(observations, actions)
-        critic2 = Critic(self.hidden_dims,
+        critic2 = Critic(self.hidden_dims, encoder=self.encoder,
                          activations=self.activations)(observations, actions)
         return critic1, critic2

@@ -175,7 +175,7 @@ def main(_):
             if FLAGS.reinitialize:
                 agent.reinitialize_output_layer()
 
-        # eval
+        eval
         eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
         for k, v in eval_stats.items():
             summary_writer.add_scalar(f'offline/evaluation/average_{k}s', v, FLAGS.pretrain_steps)

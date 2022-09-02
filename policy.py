@@ -30,9 +30,9 @@ class NormalTanhPolicy(nn.Module):
     def __call__(self,
                  observations: jnp.ndarray,
                  temperature: float = 1.0,
-                 training: bool = False) -> tfd.Distribution:
+                 training: bool = True) -> tfd.Distribution:
         if self.encoder:
-            observations = self.encoder(observations)
+            observations = self.encoder(observations, training=training)
         outputs = MLP(self.hidden_dims,
                       activate_final=True,
                       dropout_rate=self.dropout_rate)(observations,
@@ -72,7 +72,7 @@ def _sample_actions(rng: PRNGKey,
                     actor_params: Params,
                     observations: np.ndarray,
                     temperature: float = 1.0) -> Tuple[PRNGKey, jnp.ndarray]:
-    dist = actor_def.apply({'params': actor_params}, observations, temperature)
+    dist = actor_def.apply({'params': actor_params}, observations, temperature, training=False)
     rng, key = jax.random.split(rng)
     return rng, dist.sample(seed=key)
 
