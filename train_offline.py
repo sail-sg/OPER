@@ -105,6 +105,8 @@ def main(_):
             "pretrain_sample": FLAGS.pretrain_sample, "pretrain_steps": FLAGS.pretrain_steps, 
             "offline_steps": FLAGS.offline_steps, "sampler": FLAGS.sample,
             "retrain": FLAGS.retrain, "finetune": FLAGS.finetune, "reinitialize": FLAGS.reinitialize, 
+            "encoder_hidden_dims": FLAGS.config.encoder_hidden_dims, "dynamic_hidden_dims": FLAGS.config.dynamic_hidden_dims,
+            "embedding_dim": FLAGS.config.embedding_dim, "hidden_dims": FLAGS.config.hidden_dims,
             "base_prob": FLAGS.config.base_prob, "tag": FLAGS.tag})
 
     FLAGS.save_dir = Path(os.path.join(FLAGS.save_dir, FLAGS.tag, FLAGS.env_name, str(FLAGS.seed)))

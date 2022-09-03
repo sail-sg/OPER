@@ -1,5 +1,5 @@
 import functools
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple, Any
 import flax.linen as nn
 import jax
 import jax.numpy as jnp
@@ -18,7 +18,7 @@ LOG_STD_MAX = 2.0
 class NormalTanhPolicy(nn.Module):
     hidden_dims: Sequence[int]
     action_dim: int
-    encoder: Optional[nn.Module] = None
+    encoder: Any = None
     state_dependent_std: bool = True
     dropout_rate: Optional[float] = None
     log_std_scale: float = 1.0
@@ -32,7 +32,7 @@ class NormalTanhPolicy(nn.Module):
                  temperature: float = 1.0,
                  training: bool = True) -> tfd.Distribution:
         if self.encoder:
-            observations = self.encoder(observations, training=training)
+            observations = self.encoder()(observations, training=training)
         outputs = MLP(self.hidden_dims,
                       activate_final=True,
                       dropout_rate=self.dropout_rate)(observations,

@@ -8,10 +8,10 @@ def get_config():
     config.value_lr = 3e-4
     config.critic_lr = 3e-4
 
-    config.hidden_dims = (256, 128, 64, 64)
-    # config.hidden_dims = (256, 256, 256, 256)
-    # config.hidden_dims = (256, 256)
-    # config.hidden_dims = (64,)
+    config.encoder_hidden_dims = (256, 128)
+    config.dynamic_hidden_dims = (64, 64)
+    config.embedding_dim = 64 # output layer unit for encoder and dynamic
+    config.hidden_dims = (64,) # actor, critic
 
     config.discount = 0.99
 

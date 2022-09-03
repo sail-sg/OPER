@@ -1,5 +1,5 @@
 from random import triangular
-from typing import Callable, Sequence, Tuple, Optional
+from typing import Callable, Sequence, Tuple, Optional, Any
 
 import jax.numpy as jnp
 from flax import linen as nn
@@ -9,26 +9,26 @@ from common import MLP
 
 class ValueCritic(nn.Module):
     hidden_dims: Sequence[int]
-    encoder: Optional[nn.Module] = None
+    encoder: Any = None
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, training=True) -> jnp.ndarray:
         if self.encoder:
-            observations = self.encoder(observations, training)
+            observations = self.encoder()(observations, training)
         critic = MLP((*self.hidden_dims, 1))(observations)
         return jnp.squeeze(critic, -1)
 
 
 class Critic(nn.Module):
     hidden_dims: Sequence[int]
-    encoder: Optional[nn.Module] = None
+    encoder: Any = None
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
                  actions: jnp.ndarray, training=True) -> jnp.ndarray:
         if self.encoder:
-            observations = self.encoder(observations, training)
+            observations = self.encoder()(observations, training)
         inputs = jnp.concatenate([observations, actions], -1)
         critic = MLP((*self.hidden_dims, 1),
                      activations=self.activations)(inputs)
@@ -37,7 +37,7 @@ class Critic(nn.Module):
 
 class DoubleCritic(nn.Module):
     hidden_dims: Sequence[int]
-    encoder: Optional[nn.Module] = None
+    encoder: Any = None
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
 
     @nn.compact

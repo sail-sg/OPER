@@ -56,7 +56,9 @@ class Learner(object):
                  actor_lr: float = 3e-4,
                  value_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
-                 hidden_dims: Sequence[int] = (256, 256),
+                 encoder_hidden_dims = None,  # encoder = encoder_hidden_dim + embedding_dim
+                 embedding_dim = None,
+                 hidden_dims = None,
                  discount: float = 0.99,
                  tau: float = 0.005,
                  expectile: float = 0.8,
@@ -87,15 +89,12 @@ class Learner(object):
         rng, actor_key, critic_key, value_key, \
         dropout_key1, dropout_key2, dropout_key3 = jax.random.split(rng, 7)
 
+
         if encoder:
-            encoder_hidden_dim = (256, 128)
-            # encoder_hidden_dim = (64,)
-            # encoder_hidden_dim = ()
-            state_embedding_dim = 128
-            encoder_def = Encoder(encoder_hidden_dim, state_embedding_dim, 
-                last_layer_norm=last_layer_norm, batch_norm=batch_norm)
+            def encoder_nenerator():
+                return Encoder(encoder_hidden_dims, embedding_dim, last_layer_norm=last_layer_norm, batch_norm=batch_norm)
         else:
-            encoder_def = None
+            encoder_nenerator = None # encoder are implicitly included in actor/critic hidden layers
         
         if not self.finetune or self.finetune == 'none':
             if opt_decay_schedule == "cosine":
@@ -112,14 +111,10 @@ class Learner(object):
             critic_optimiser = optax.adamw(learning_rate=critic_lr)
             value_optimiser = optax.adamw(learning_rate=value_lr)
 
-            actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
-            critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
-            value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
-
 
         else:
             # TODO: Adam -> AdamW
-            # 0.1 learning rate
+            # 0.1 learning rate 
             if opt_decay_schedule == "cosine":
                 schedule_fn = optax.cosine_decay_schedule(-actor_lr*0.1, max_steps)
                 actor_optimiser = optax.chain(optax.scale_by_adam(),
@@ -128,27 +123,18 @@ class Learner(object):
                 actor_optimiser = optax.adam(learning_rate=actor_lr*0.1)
             critic_optimiser = optax.adam(learning_rate=critic_lr*0.1)
             value_optimiser = optax.adam(learning_rate=value_lr*0.1)
-            # freeze representation parameters (i.e. set the gradient of these parameters to zero)
-            # if self.rep_module == 'backbone':
-            #     pass
-            # elif self.rep_module == 'encoder':
-            #     pass
-            # else:
-            #     raise NotImplementedError
-            if encoder:
-                actor_param_labels = freeze({'encoder': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
-                critic_param_labels = freeze({'encoder': 'rep', 'Critic_0': 'pred', 'Critic_1': 'pred'})
-                value_param_labels = freeze({'encoder': 'rep', 'MLP_0': 'pred'})
-            else:
-                # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
-                # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
-                # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-                # value_param_labels = freeze(single_critic_labels)
-                # treat the first layer as representation module
-                actor_param_labels = freeze({'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'pred'}, 'Dense_0': 'pred', 'log_stds': 'pred'})
-                single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'pred', 'Dense_2': 'pred'}}
-                critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-                value_param_labels = freeze(single_critic_labels)
+            
+            # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
+            # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
+            # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
+            # value_param_labels = freeze(single_critic_labels)
+            # treat the first layer as representation module
+            actor_param_labels = freeze({
+                'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'rep', 'Dense_3': 'pred'}, 
+                'Dense_0': 'pred', 'log_stds': 'pred'})
+            single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'rep', 'Dense_3': 'pred', 'Dense_4': 'pred'}}
+            critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
+            value_param_labels = freeze(single_critic_labels)
             if self.finetune == 'freeze':
                 actor_optimiser2 = optax.set_to_zero()
                 critic_optimiser2 = optax.set_to_zero()
@@ -159,6 +145,7 @@ class Learner(object):
                 value_optimiser2 = optax.adam(learning_rate=value_lr*0.01)
             else:
                 raise NotImplementedError
+        
 
             if retrain == 'pred':
                 actor_optimiser = optax.multi_transform(
@@ -183,10 +170,15 @@ class Learner(object):
             else:
                 raise NotImplementedError
 
+        # clip gradient
+        actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
+        critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
+        value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
+
         action_dim = actions.shape[-1]
         actor_def = policy.NormalTanhPolicy(hidden_dims,
                                             action_dim,
-                                            encoder=encoder_def,
+                                            encoder=encoder_nenerator,
                                             log_std_scale=1e-3,
                                             log_std_min=-5.0,
                                             dropout_rate=dropout_rate,
@@ -197,18 +189,23 @@ class Learner(object):
                              inputs=[{'params': actor_key, 'dropout': dropout_key1}, observations],
                              tx=actor_optimiser)
 
-        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_def)  # nn.module
+        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_nenerator)  # nn.module
         critic = Model.create(critic_def,     # Model (flax.struct.dataclass)
                               inputs=[{'params': critic_key, 'dropout': dropout_key2}, observations, actions],
                               tx=critic_optimiser)
 
-        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_def)
+        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_nenerator)
         value = Model.create(value_def,
                              inputs=[{'params': value_key, 'dropout': dropout_key3}, observations],
                              tx=value_optimiser)
 
         target_critic = Model.create(
             critic_def, inputs=[{'params': critic_key, 'dropout': dropout_key2}, observations, actions])
+
+        print(actor.params)
+        print(critic.params)
+        print(value.params)
+        print(target_critic.params)
 
         self.actor = actor
         self.critic = critic
