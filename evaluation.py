@@ -13,11 +13,14 @@ def evaluate(agent: nn.Module, env: gym.Env,
         observation, done = env.reset(), False
 
         while not done:
-            action = agent.sample_actions(observation, temperature=0.0)
+            action = agent.sample_actions(observation, temperature=0.0) # determinisitc when T=0
             observation, _, done, info = env.step(action)
 
         for k in stats.keys():
             stats[k].append(info['episode'][k])
+
+    returns = stats['return']
+    print(f'mean is {np.mean(returns).round(1)}, std is {np.std(returns).round(1)}')
 
     for k, v in stats.items():
         stats[k] = np.mean(v)

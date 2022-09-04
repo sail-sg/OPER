@@ -113,7 +113,7 @@ class Learner(object):
 
 
         else:
-            # TODO: Adam -> AdamW
+            # TODO: warmup for finetune lr
             # 0.1 learning rate 
             if opt_decay_schedule == "cosine":
                 schedule_fn = optax.cosine_decay_schedule(-actor_lr*0.1, max_steps)

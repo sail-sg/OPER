@@ -68,20 +68,13 @@ def normalize(dataset):
 
 def make_env_and_dataset(env_name: str,
                          seed: int) -> Tuple[gym.Env, D4RLDataset]:
-    pretrain_env = gym.make(env_name)
-    pretrain_env = wrappers.EpisodeMonitor(pretrain_env)
-    pretrain_env = wrappers.SinglePrecision(pretrain_env)
-    pretrain_env.seed(seed)
-    pretrain_env.action_space.seed(seed)
-    pretrain_env.observation_space.seed(seed)
-    pretrain_dataset = D4RLDataset(pretrain_env, FLAGS.batch_size, FLAGS.pretrain_sample, FLAGS.config.base_prob)
-
     env = gym.make(env_name)
     env = wrappers.EpisodeMonitor(env)
     env = wrappers.SinglePrecision(env)
     env.seed(seed)
     env.action_space.seed(seed)
     env.observation_space.seed(seed)
+    pretrain_dataset = D4RLDataset(env, FLAGS.batch_size, FLAGS.pretrain_sample, FLAGS.config.base_prob)
     dataset = D4RLDataset(env, FLAGS.batch_size, FLAGS.sample, FLAGS.config.base_prob)
 
     if 'antmaze' in FLAGS.env_name:
@@ -94,7 +87,7 @@ def make_env_and_dataset(env_name: str,
         normalize(pretrain_dataset)
         normalize(dataset)
 
-    return pretrain_env, env, pretrain_dataset, dataset
+    return env, pretrain_dataset, dataset
 
 
 def main(_):
@@ -115,7 +108,7 @@ def main(_):
                                    write_to_disk=False)
     os.makedirs(FLAGS.save_dir, exist_ok=True)
 
-    pretrain_env, env, pretrain_dataset, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
+    env, pretrain_dataset, dataset = make_env_and_dataset(FLAGS.env_name, FLAGS.seed)
 
     # pretrain
     if FLAGS.pretrain_steps > 0:
@@ -145,7 +138,8 @@ def main(_):
                 summary_writer.flush()
 
             if i % FLAGS.eval_interval == 0:
-                eval_stats = evaluate(rep_agent, pretrain_env, FLAGS.eval_episodes)
+                eval_episode = max(100, FLAGS.eval_episodes) if i ==  FLAGS.pretrain_steps else FLAGS.eval_episodes
+                eval_stats = evaluate(rep_agent, env, eval_episode)
 
                 for k, v in eval_stats.items():
                     summary_writer.add_scalar(f'pretrain/evaluation/average_{k}s', v, i)
@@ -177,7 +171,7 @@ def main(_):
             if FLAGS.reinitialize:
                 agent.reinitialize_output_layer()
 
-        eval
+        eval_episode = max(100, FLAGS.eval_episodes)
         eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
         for k, v in eval_stats.items():
             summary_writer.add_scalar(f'offline/evaluation/average_{k}s', v, FLAGS.pretrain_steps)

@@ -8,7 +8,7 @@ wandb
 output_test_job.yaml
 output_test_svc.yaml
 .vscode
-
+test.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
