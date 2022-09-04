@@ -113,12 +113,16 @@ class Learner(object):
 
 
         else:
-            # TODO: warmup for finetune lr
-            # 0.1 learning rate 
+            
+            # 0.1x learning rate and warmup
             if opt_decay_schedule == "cosine":
-                schedule_fn = optax.cosine_decay_schedule(-actor_lr*0.1, max_steps)
-                actor_optimiser = optax.chain(optax.scale_by_adam(),
-                                    optax.scale_by_schedule(schedule_fn))
+                # schedule_fn = optax.cosine_decay_schedule(actor_lr*0.1, max_steps)
+                schedule_fn = optax.warmup_cosine_decay_schedule(
+                    init_value=actor_lr*0.001, 
+                    peak_value=actor_lr*0.1, 
+                    warmup_steps=int(max_steps/20),
+                    decay_steps=max_steps)
+                actor_optimiser = optax.adam(schedule_fn)
             else:
                 actor_optimiser = optax.adam(learning_rate=actor_lr*0.1)
             critic_optimiser = optax.adam(learning_rate=critic_lr*0.1)
@@ -128,9 +132,12 @@ class Learner(object):
             # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
             # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
             # value_param_labels = freeze(single_critic_labels)
-            # treat the first layer as representation module
-            actor_param_labels = freeze({
-                'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
+            if len(hidden_dims) > 0:
+                actor_param_labels = freeze({
+                    'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
+            else:
+                actor_param_labels = freeze({
+                    'Encoder_0': 'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
             single_critic_labels = {'Encoder_0': 'rep', 'MLP_0': 'pred'}
             critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
             value_param_labels = freeze(single_critic_labels)
@@ -183,17 +190,17 @@ class Learner(object):
                                             dropout_rate=dropout_rate,
                                             state_dependent_std=False,
                                             tanh_squash_distribution=False)
-
+        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_generator)  # nn.module
+        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_generator)
+        # print(jax.tree_map(lambda layer_params: layer_params.shape, actor_def.param))
         actor = Model.create(actor_def,
                              inputs=[{'params': actor_key, 'dropout': dropout_key1}, observations],
                              tx=actor_optimiser)
 
-        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_generator)  # nn.module
         critic = Model.create(critic_def,     # Model (flax.struct.dataclass)
                               inputs=[{'params': critic_key, 'dropout': dropout_key2}, observations, actions],
                               tx=critic_optimiser)
 
-        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_generator)
         value = Model.create(value_def,
                              inputs=[{'params': value_key, 'dropout': dropout_key3}, observations],
                              tx=value_optimiser)
