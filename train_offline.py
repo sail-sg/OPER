@@ -29,7 +29,7 @@ flags.DEFINE_enum('rep_module', 'backbone', ['backbone', 'encoder'], 'The networ
 flags.DEFINE_integer('pretrain_steps', int(1e6), '')
 flags.DEFINE_enum('pretrain_sample', 'uniform', ['uniform', 'return-balance', 'inverse-return-balance'], '')
 # offline learning
-flags.DEFINE_integer('offline_steps', int(1e6), 'Number of total training steps.')
+flags.DEFINE_integer('offline_steps', int(4e5), 'Number of total training steps.')
 flags.DEFINE_enum('sample', 'return-balance', ['uniform', 'return-balance', 'inverse-return-balance'], '')
 flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'none'], 'representation finutune schemes') 
 flags.DEFINE_enum('retrain', 'repr', ['repr', 'pred', 'all'], 'retrain which part of network') 
@@ -195,7 +195,8 @@ def main(_):
                 summary_writer.flush()
 
             if i % FLAGS.eval_interval == 0:
-                eval_stats = evaluate(agent, env, FLAGS.eval_episodes)
+                eval_episode = max(100, FLAGS.eval_episodes) if i == FLAGS.pretrain_steps + FLAGS.offline_steps  else FLAGS.eval_episodes
+                eval_stats = evaluate(agent, env, eval_episode)
 
                 for k, v in eval_stats.items():
                     summary_writer.add_scalar(f'offline/evaluation/average_{k}s', v, i)

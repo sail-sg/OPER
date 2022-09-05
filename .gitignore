@@ -3,6 +3,7 @@ k8s
 result
 scripts
 sweep.sh
+configs2
 tmp
 wandb
 output_test_job.yaml

@@ -132,6 +132,7 @@ class Learner(object):
             # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
             # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
             # value_param_labels = freeze(single_critic_labels)
+
             if len(hidden_dims) > 0:
                 actor_param_labels = freeze({
                     'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
@@ -141,6 +142,7 @@ class Learner(object):
             single_critic_labels = {'Encoder_0': 'rep', 'MLP_0': 'pred'}
             critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
             value_param_labels = freeze(single_critic_labels)
+            
             if self.finetune == 'freeze':
                 actor_optimiser2 = optax.set_to_zero()
                 critic_optimiser2 = optax.set_to_zero()
