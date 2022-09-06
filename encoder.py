@@ -1,4 +1,4 @@
-from typing import Callable, Sequence, Tuple
+from typing import Callable, Sequence, Tuple, Optional
 
 import jax.numpy as jnp
 from flax import linen as nn
@@ -12,6 +12,7 @@ class Encoder(nn.Module):
     activations: Callable[[jnp.ndarray], jnp.ndarray] = nn.relu
     last_layer_norm: bool = False
     batch_norm: bool = False
+    dropout_rate: Optional[float] = None
 
     @nn.compact
     def __call__(self, observations: jnp.ndarray, training: bool = True) -> jnp.ndarray:
@@ -19,7 +20,7 @@ class Encoder(nn.Module):
         embedding = MLP((*self.hidden_dims, self.embedding_dim),
                      activations=self.activations,
                      activate_final=True,
-                    #  dropout_rate=0.1,
+                     dropout_rate=self.dropout_rate,
                      batch_norm=self.batch_norm)(inputs, training=training)
         if self.last_layer_norm:
             embedding = nn.LayerNorm()(embedding)

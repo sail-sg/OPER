@@ -91,10 +91,13 @@ class Learner(object):
 
 
         if encoder:
-            def encoder_generator():
+            def actor_encoder_generator():
+                return Encoder(encoder_hidden_dims, embedding_dim, dropout_rate=dropout_rate, last_layer_norm=last_layer_norm, batch_norm=batch_norm)
+            def critic_encoder_generator():
                 return Encoder(encoder_hidden_dims, embedding_dim, last_layer_norm=last_layer_norm, batch_norm=batch_norm)
         else:
-            encoder_generator = None # encoder are implicitly included in actor/critic hidden layers
+            actor_encoder_generator = None # encoder are implicitly included in actor/critic hidden layers
+            critic_encoder_generator = None # encoder are implicitly included in actor/critic hidden layers
         
         if not self.finetune or self.finetune == 'none':
             if opt_decay_schedule == "cosine":
@@ -104,12 +107,12 @@ class Learner(object):
                 #                     optax.scale_by_schedule(schedule_fn))
 
                 schedule_fn = optax.cosine_decay_schedule(actor_lr, max_steps)
-                actor_optimiser = optax.adamw(schedule_fn)
+                actor_optimiser = optax.adam(schedule_fn)
                                     
             else:
-                actor_optimiser = optax.adamw(learning_rate=actor_lr)
-            critic_optimiser = optax.adamw(learning_rate=critic_lr)
-            value_optimiser = optax.adamw(learning_rate=value_lr)
+                actor_optimiser = optax.adam(learning_rate=actor_lr)
+            critic_optimiser = optax.adam(learning_rate=critic_lr)
+            value_optimiser = optax.adam(learning_rate=value_lr)
 
 
         else:
@@ -178,22 +181,23 @@ class Learner(object):
             else:
                 raise NotImplementedError
 
-        # clip gradient
-        actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
-        critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
-        value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
+        # clip gradient would hurt shallow network performance
+        # actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
+        # critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
+        # value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
 
         action_dim = actions.shape[-1]
+        # dropout only is added to hidden layers of actor
         actor_def = policy.NormalTanhPolicy(hidden_dims,
                                             action_dim,
-                                            encoder=encoder_generator,
+                                            encoder=actor_encoder_generator,
                                             log_std_scale=1e-3,
                                             log_std_min=-5.0,
                                             dropout_rate=dropout_rate,
                                             state_dependent_std=False,
                                             tanh_squash_distribution=False)
-        critic_def = value_net.DoubleCritic(hidden_dims, encoder=encoder_generator)  # nn.module
-        value_def = value_net.ValueCritic(hidden_dims, encoder=encoder_generator)
+        critic_def = value_net.DoubleCritic(hidden_dims, encoder=critic_encoder_generator)  # nn.module
+        value_def = value_net.ValueCritic(hidden_dims, encoder=critic_encoder_generator)
         # print(jax.tree_map(lambda layer_params: layer_params.shape, actor_def.param))
         actor = Model.create(actor_def,
                              inputs=[{'params': actor_key, 'dropout': dropout_key1}, observations],
