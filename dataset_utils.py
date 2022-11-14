@@ -11,7 +11,7 @@ Array = Any
 
 Batch = collections.namedtuple(
     'Batch',
-    ['observations', 'actions', 'rewards', 'masks', 'next_observations'])
+    ['observations', 'actions', 'rewards', 'masks', 'next_observations', 'weights'])
 
 
 def split_into_trajectories(observations, actions, rewards, masks, dones_float,
@@ -62,28 +62,29 @@ class RandSampler(object):
 
 
 class PrefetchBalancedSampler(object):
-  """A prefetch balanced sampler."""
+    """A prefetch balanced sampler."""
+    def __init__(self, probs, max_size: int, batch_size: int, n_prefetch: int) -> None:
+        self._max_size = max_size
+        self._batch_size = batch_size
+        self.n_prefetch = min(n_prefetch, max_size//batch_size)
+        self._probs = probs.squeeze() / np.sum(probs)
+        self.cnt = self.n_prefetch - 1
 
-  def __init__(self, probs: Array, max_size: int, batch_size: int, n_prefetch: int) -> None:
-    self._max_size = max_size
-    self._batch_size = batch_size
-    self.n_prefetch = min(n_prefetch, max_size//batch_size)
-    self._probs = probs / np.sum(probs)
-    self.cnt = self.n_prefetch - 1
-  
-  def sample(self):
-    self.cnt = (self.cnt+1)%self.n_prefetch
-    if self.cnt == 0:
-      self.indices = np.random.choice(self._max_size, 
-          size=self._batch_size * self.n_prefetch, p=self._probs)
-    return self.indices[self.cnt*self._batch_size : (self.cnt+1)*self._batch_size]
+    def sample(self):
+        self.cnt = (self.cnt+1)%self.n_prefetch
+        if self.cnt == 0:
+            self.indices = np.random.choice(self._max_size, 
+            size=self._batch_size * self.n_prefetch, p=self._probs)
+        return self.indices[self.cnt*self._batch_size : (self.cnt+1)*self._batch_size]
 
+    def replace_prob(self, probs):
+        self._probs = probs.squeeze() / np.sum(probs)
 
 class Dataset(object):
     def __init__(self, observations: np.ndarray, actions: np.ndarray,
                  rewards: np.ndarray, masks: np.ndarray,
                  dones_float: np.ndarray, next_observations: np.ndarray,
-                 size: int, batch_size: int, sample: str, base_prob: float):
+                 size: int, batch_size: int, sample: str, reweight: bool, base_prob: float):
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
@@ -93,7 +94,36 @@ class Dataset(object):
         self.size = size
         self.returns = self.compute_return()
         self.batch_size = batch_size
-        self.sampler = self.make_sampler(sample, base_prob)
+        self.reweight = reweight
+        self.resample = sample
+        # prob
+        if 'reward' in sample:
+            dist = self.rewards
+        elif 'return' in sample:
+            dist = self.returns
+        else:
+            dist = self.returns
+            # raise NotImplemented
+        if 'inverse' not in sample:
+            probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+        else:
+            probs = 1 - (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+        self.probs = probs / probs.sum()
+        # self.probs = np.sqrt(self.probs)
+
+        # rebalance
+        if self.reweight:
+            self.weights = self.probs * self.size
+        else:
+            self.weights = np.ones_like(self.probs)
+
+        if sample == 'uniform':
+            self.sampler =  RandSampler(self.size, self.batch_size)
+        elif 'balance' in sample:
+            self.sampler =  PrefetchBalancedSampler(self.probs, self.size, self.batch_size, n_prefetch=1000)
+        else:
+            raise NotImplemented
+
 
     def compute_return(self):
         returns, ret, start = [], 0, 0
@@ -106,24 +136,6 @@ class Dataset(object):
         assert len(returns) == self.size
         return np.stack(returns)
 
-    def make_sampler(self, sample: str, base_prob: float):
-        if sample == 'uniform':
-            return RandSampler(self.size, self.batch_size)
-        if 'balance' in sample:
-            if 'reward' in sample:
-                dist = self.rewards
-            elif 'return' in sample:
-                dist = self.returns
-            else:
-                raise NotImplemented
-            if 'inverse' not in sample:
-                probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
-            else:
-                probs = 1 - (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
-            # probs = np.sqrt(probs)
-            return PrefetchBalancedSampler(probs, self.size, self.batch_size, n_prefetch=1000)
-        else:
-            raise NotImplemented
 
     def sample(self) -> Batch:
         # indx = np.random.randint(self.size, size=self.batch_size)
@@ -133,7 +145,36 @@ class Dataset(object):
                      actions=self.actions[indx],
                      rewards=self.rewards[indx],
                      masks=self.masks[indx],
-                     next_observations=self.next_observations[indx])
+                     next_observations=self.next_observations[indx],
+                     weights=self.weights[indx],
+                     )
+    
+    def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0, eps_max=None):
+        #? need set adv_prob_base?
+        if weight_func == 'linear':
+            weight = weight - weight.min()
+            prob = weight / weight.sum()
+            # keep mean, scale std
+            if std:
+                scale = std / (prob.std() * self.size)
+                prob = scale*(prob - 1/self.size) + 1/self.size
+                if eps: # if scale, the prob may be negative.
+                    prob = np.maximum(prob, eps/self.size)
+                if eps_max: # if scale, the prob may be too large.
+                    prob = np.minimum(prob, eps_max/self.size)
+            prob = prob/prob.sum() # norm to 1 again
+        elif weight_func == 'exp':
+            weight = weight / np.abs(weight).mean()
+            weight = np.exp(exp_lambd * weight)
+            prob = weight / weight.sum()
+        self.probs = prob
+
+        if self.reweight:
+            if len(prob.shape) == 1:
+                prob = np.expand_dims(prob, 1)
+            self.weights = prob * self.size
+        if 'balance' in self.resample:
+            self.sampler.replace_prob(self.probs)
 
 
 class D4RLDataset(Dataset):
@@ -141,6 +182,7 @@ class D4RLDataset(Dataset):
                  env: gym.Env,
                  batch_size: int,
                  sample: str,
+                 reweight: bool,
                  base_prob: float,
                  clip_to_eps: bool = True,
                  eps: float = 1e-5):
@@ -172,6 +214,7 @@ class D4RLDataset(Dataset):
                          size=len(dataset['observations']),
                          batch_size=batch_size,
                          sample=sample,
+                         reweight=reweight,
                          base_prob=base_prob)
 
 

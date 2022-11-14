@@ -29,15 +29,16 @@ def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
 def _update_jit(
     rng: PRNGKey, actor: Model, critic: Model, value: Model,
     target_critic: Model, batch: Batch, discount: float, tau: float,
-    expectile: float, temperature: float
+    expectile: float, temperature: float, 
+    reweight_eval, reweight_improve, reweight_constraint
 ) -> Tuple[PRNGKey, Model, Model, Model, Model, Model, InfoDict]:
     
     key0, key1, key2, rng = jax.random.split(rng, 4)
-    new_value, value_info = update_v(key0, target_critic, value, batch, expectile)
+    new_value, value_info = update_v(key0, target_critic, value, batch, expectile, reweight_eval)
     new_actor, actor_info = awr_update_actor(key1, actor, target_critic,
-                                             new_value, batch, temperature)
+                                             new_value, batch, temperature, reweight_improve, reweight_constraint)
 
-    new_critic, critic_info = update_q(key2, critic, new_value, batch, discount)
+    new_critic, critic_info = update_q(key2, critic, new_value, batch, discount, reweight_eval)
 
     new_target_critic = target_update(new_critic, target_critic, tau)
 
@@ -53,6 +54,9 @@ class Learner(object):
                  seed: int,
                  observations: jnp.ndarray,
                  actions: jnp.ndarray,
+                 reweight_eval,
+                 reweight_improve,
+                 reweight_constraint,
                  actor_lr: float = 3e-4,
                  value_lr: float = 3e-4,
                  critic_lr: float = 3e-4,
@@ -84,6 +88,9 @@ class Learner(object):
         self.temperature = temperature
         self.finetune = finetune
         self.rep_module = rep_module
+        self.reweight_eval = reweight_eval
+        self.reweight_improve = reweight_improve
+        self.reweight_constraint = reweight_constraint
 
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, value_key, \
@@ -234,7 +241,8 @@ class Learner(object):
     def update(self, batch: Batch) -> InfoDict:
         new_rng, new_actor, new_critic, new_value, new_target_critic, info = _update_jit(
             self.rng, self.actor, self.critic, self.value, self.target_critic,
-            batch, self.discount, self.tau, self.expectile, self.temperature)
+            batch, self.discount, self.tau, self.expectile, self.temperature, 
+            self.reweight_eval, self.reweight_improve, self.reweight_constraint)
 
         self.rng = new_rng
         self.actor = new_actor

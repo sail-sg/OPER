@@ -29,7 +29,7 @@ flags.DEFINE_enum('rep_module', 'backbone', ['backbone', 'encoder'], 'The networ
 flags.DEFINE_integer('pretrain_steps', int(1e6), '')
 flags.DEFINE_enum('pretrain_sample', 'uniform', ['uniform', 'return-balance', 'inverse-return-balance'], '')
 # offline learning
-flags.DEFINE_integer('offline_steps', int(4e5), 'Number of total training steps.')
+flags.DEFINE_integer('offline_steps', int(0), 'Number of total training steps.')
 flags.DEFINE_enum('sample', 'return-balance', ['uniform', 'return-balance', 'inverse-return-balance'], '')
 flags.DEFINE_enum('finetune', 'freeze', ['freeze', 'reduced-lr', 'none'], 'representation finutune schemes') 
 flags.DEFINE_enum('retrain', 'repr', ['repr', 'pred', 'all'], 'retrain which part of network') 
@@ -44,7 +44,6 @@ config_flags.DEFINE_config_file(
     'default.py',
     'File path to the training hyperparameter configuration.',
     lock_config=False)
-
 
 def normalize(dataset):
 
