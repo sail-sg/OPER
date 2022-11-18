@@ -3,7 +3,7 @@
 _target_: policy_learner.BCLearner
 name: bc
 
-model_save_path: ${path}/models/${name}_${beta.name}_${env.name}.pt
+model_save_path: ${path}/models/${tag}/${name}_${beta.name}
 
 device: ${device}
 discount: ${discount}

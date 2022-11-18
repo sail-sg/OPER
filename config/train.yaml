@@ -16,21 +16,29 @@ train_q: true
 train_pi: true
 train_baseline: false
 
+tag: 
 # model params
 beta:
   load_path: null
 q:
   load_path: null
-  model_save_path: ${path}/models/${name}_q
+  model_save_path: ${path}/models/${tag}/${name}_q
 pi:
   load_path: null
-  model_save_path: ${path}/models/${name}_pi
+  model_save_path: ${path}/models/${tag}/${name}_pi
 baseline:
   load_path: null
-  model_save_path: ${path}/models/${name}_baseline
+  model_save_path: ${path}/models/${tag}/${name}_baseline
 
-tag: 
 resampling: uniform
+weight_func: linear
+weight_num: 3
+weight_path: ../TD3_BC/weights/nstep_nstep_10_1000000_5_1000000_norm=1_scale=False_${env.name}_%s.npy
+iter: 1
+std: 2.0
+eps: 0.1
+eps_max: 0
+weight_ensemble: mean
 # train loop hyperparameters
 beta_steps: 5e5
 baseline_steps: 0

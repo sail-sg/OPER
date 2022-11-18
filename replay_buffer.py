@@ -3,6 +3,30 @@ import torch
 import utils
 
 
+
+class PrefetchBalancedSampler(object):
+    """A prefetch balanced sampler."""
+    def __init__(self, probs, max_size: int, batch_size: int, n_prefetch: int) -> None:
+        self._max_size = max_size
+        self._batch_size = batch_size
+        self.n_prefetch = min(n_prefetch, max_size//batch_size)
+        self._probs = probs.squeeze() / np.sum(probs)
+        self.cnt = self.n_prefetch - 1
+
+    def sample(self):
+        self.cnt = (self.cnt+1)%self.n_prefetch
+        if self.cnt == 0:
+            self.indices = np.random.choice(self._max_size, 
+            size=self._batch_size * self.n_prefetch, p=self._probs)
+        return self.indices[self.cnt*self._batch_size : (self.cnt+1)*self._batch_size]
+
+"""cover ReplayBuffer sample method"""
+def sample(self, n=128):
+        # indices = np.random.randint(0, self.length, size=(n,))
+        indices = self.sampler.sample()
+        return self.get_transitions(indices)
+
+
 class Transition():
     def __init__(self, state, action, reward, state_prime, action_prime=None, 
                     done=False, batched=False):
@@ -75,6 +99,8 @@ class Replay:
     def sample(self, n=128):
         indices = np.random.randint(0, self.length, size=(n,))
         return self.get_transitions(indices)
+
+
 
     # TODO: handle episodes correctly (only sample at least k from end)
     def sample_k(self, k, gamma, n=128):

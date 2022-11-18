@@ -7,3 +7,5 @@ scripts
 run.sh
 wandb
 Makefile
+.vscode
+.DS_Store

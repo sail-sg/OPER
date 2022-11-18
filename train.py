@@ -1,7 +1,7 @@
 import hydra
 import os
 import torch
-import replay_buffer
+from replay_buffer import PrefetchBalancedSampler, sample
 import numpy as np
 from copy import deepcopy
 from experiment_logging import default_logger as logger
@@ -12,10 +12,13 @@ def train(cfg):
     print('jobname: ', cfg.name)
 
     wandb.init(project="onestep", config={'env': cfg.env.name, 'seed': cfg.seed, 
-                        'temp': cfg.pi.temp, 'resample': cfg.resampling, 'tag': cfg.tag,})
+                        'temp': cfg.pi.temp, 'resample': cfg.resampling, 'std': cfg.std,
+                        'eps': cfg.eps, 'eps_max': cfg.eps_max, 
+                         'tag': cfg.tag,})
 
     # load data
     replay = torch.load(cfg.data_path)
+
 
     # load env
     import gym
@@ -40,8 +43,54 @@ def train(cfg):
     beta = hydra.utils.instantiate(cfg.beta)
     baseline = hydra.utils.instantiate(cfg.baseline)
 
+    if cfg.resampling == 'adv':
+        weight_list = []
+        for seed in range(1, cfg.weight_num + 1):
+            try:
+                wp = cfg.weight_path%seed
+            except:
+                wp = cfg.weight_path # load the speificed weight
+            eval_res = np.load(wp, allow_pickle=True).item()
+            try:
+                num_iter, bc_eval_steps = eval_res['iter'], eval_res['eval_steps']
+                assert cfg.iter <= num_iter
+                t = eval_res[cfg.iter]
+            except:
+                assert cfg.iter == 1
+                t = eval_res[1000000]['adv']
+            weight_list.append(t)
+            print(f'Loading weights from {wp} at {cfg.iter}th rebalanced behavior policy')
+        if cfg.weight_ensemble == 'mean':
+          weight = np.stack(weight_list, axis=0).mean(axis=0)
+        elif cfg.weight_ensemble == 'median':
+          weight = np.median(np.stack(weight_list, axis=0), axis=0)
+        else:
+          raise NotImplementedError
+        assert replay.length == weight.shape[0]
+        # TODO: scale
+        if cfg.weight_func == 'linear':
+            weight = weight - weight.min()
+            prob = weight / weight.sum()
+            # keep mean, scale std
+            if cfg.std:
+                scale = cfg.std / (prob.std() * replay.length)
+                prob = scale*(prob - 1/replay.length) + 1/replay.length
+                if cfg.eps: # if scale, the prob may be negative.
+                    prob = np.maximum(prob, cfg.eps/replay.length)
+                if cfg.eps_max: # if scale, the prob may be too large.
+                    prob = np.minimum(prob, cfg.eps_max/replay.length)
+            prob = prob/prob.sum() # norm to 1 again
+        assert q.batch_size == pi.batch_size == beta.batch_size
+        sampler = PrefetchBalancedSampler(prob, replay.length, q.batch_size, 1000)
+        replay.sampler = sampler
+        # set new resampling method
+        import types
+        replay.sample = types.MethodType(sample, replay)
+
     # setup logger 
     os.makedirs(cfg.log_dir, exist_ok=True)
+    model_dir = os.path.split(cfg.beta.model_save_path)[0]
+    os.makedirs(model_dir, exist_ok=True)
     setup_logger(cfg)
     q.set_logger(logger)
     pi.set_logger(logger)
@@ -55,17 +104,20 @@ def train(cfg):
 
     # train beta
     if cfg.train_beta:
-        for step in range(int(cfg.beta_steps)):
-            beta.train_step(replay, None, None, None)
-
-            if (step+1) % int(cfg.log_freq) == 0:
-                logger.update('beta/step', step)
-                logger.write_sub_meter('beta')
-            if (step+1) % int(cfg.eval_freq) == 0:
-                ret, norm_ret = beta.eval(env, cfg.eval_episodes)
-                wandb.log({'beta/score': norm_ret}, step=step+1)
-            if (step+1) % int(cfg.beta_save_freq) == 0:
-                beta.save(cfg.beta.model_save_path + '_' + str(step) + '.pt')
+        beta_model_path = cfg.beta.model_save_path + '_' + str(int(cfg.beta_steps)) + f'_{cfg.seed}.pt'
+        if os.path.exists(beta_model_path):
+            beta.load(beta_model_path)
+            print(f'load beta model from {beta_model_path}')
+        else:
+            for step in range(int(cfg.beta_steps)):
+                beta.train_step(replay, None, None, None)
+                if (step+1) % int(cfg.log_freq) == 0:
+                    logger.update('beta/step', step)
+                    logger.write_sub_meter('beta')
+                if (step+1) % int(cfg.eval_freq) == 0:
+                    ret, norm_ret = beta.eval(env, cfg.eval_episodes)
+                    wandb.log({'beta/score': norm_ret}, step=step+1)
+            beta.save(beta_model_path)
 
     # train baseline
     if cfg.train_baseline:
@@ -78,8 +130,7 @@ def train(cfg):
             # if (step+1) % int(cfg.eval_freq) == 0:
             #     ret, norm_ret = baseline.eval(env, beta, cfg.eval_episodes)
             #     wandb.log({'baseline/score': norm_ret}, step=step)
-            if (step+1) % int(cfg.beta_save_freq) == 0:
-                beta.save(cfg.beta.model_save_path + '_' + str(step) + '.pt')
+        beta.save(cfg.beta.model_save_path + '_' + str(step+1) + f'_{cfg.seed}.pt')
 
     # load beta as init pi
     pi.load_from_pilearner(beta)
@@ -88,17 +139,21 @@ def train(cfg):
     for out_step in range(int(cfg.steps)):        
         # train Q
         if cfg.train_q:
-            for in_step in range(int(cfg.q_steps)): 
-                q.train_step(replay, pi, beta)
-                
-                step = out_step * int(cfg.q_steps) + in_step 
-                if step % int(cfg.log_freq) == 0:
-                    logger.update('q/step', step)
-                    q.eval(env, pi, cfg.eval_episodes)
-                    logger.write_sub_meter('q')
-                
-                if step % int(cfg.q_save_freq) == 0:
-                    q.save(cfg.q.model_save_path + '_' + str(step) + '.pt')
+            q_model_path = cfg.q.model_save_path + '_' + str(int(cfg.q_steps)) + f'_{cfg.seed}.pt'
+            if os.path.exists(q_model_path):
+                q.load(q_model_path)
+                print(f'load q model from {q_model_path}')
+            else:
+                for in_step in range(int(cfg.q_steps)): 
+                    q.train_step(replay, pi, beta)
+                    
+                    step = out_step * int(cfg.q_steps) + in_step 
+                    if (step+1) % int(cfg.log_freq) == 0:
+                        logger.update('q/step', step)
+                        q.eval(env, pi, cfg.eval_episodes)
+                        logger.write_sub_meter('q')
+                    
+                q.save(q_model_path)
 
         # train pi
         if cfg.train_pi and cfg.pi.name != 'pi_easy_bcq':
@@ -111,9 +166,8 @@ def train(cfg):
                     logger.write_sub_meter('pi')
                 if (step+1) % int(cfg.eval_freq) == 0:
                     ret, norm_ret = pi.eval(env, cfg.eval_episodes)
-                    wandb.log({'pi/score': norm_ret}, step=cfg.beta_steps+step+1)
-                if (step+1) % int(cfg.pi_save_freq) == 0:
-                    pi.save(cfg.pi.model_save_path + '_' + str(step) + '.pt')
+                    wandb.log({'pi/score': norm_ret}, step=int(cfg.beta_steps)+step+1)
+            # pi.save(cfg.pi.model_save_path + '_' + str(step+1) + f'_{cfg.seed}.pt')
         elif cfg.pi.name == 'pi_easy_bcq':
             step = out_step + 1
             pi.update_q(q)
@@ -122,10 +176,10 @@ def train(cfg):
                 pi.eval(env, cfg.eval_episodes)
                 logger.write_sub_meter('pi')
     
-    if cfg.train_q:
-        q.save(cfg.q.model_save_path + '.pt')
-    if cfg.train_pi:
-        pi.save(cfg.pi.model_save_path + '.pt')
+    # if cfg.train_q:
+    #     q.save(cfg.q.model_save_path + '.pt')
+    # if cfg.train_pi:
+    #     pi.save(cfg.pi.model_save_path + '.pt')
 
      
 def setup_logger(cfg):
