@@ -1,12 +1,13 @@
 # @package _global_
 name: train_${env.name}_${seed}
 
-path: ???
+path: /home/aiops/yueyang/onestep-rl
 
 defaults:
   - beta: bc
   - q: sarsa
-  - pi: reverse_kl
+  # - pi: reverse_kl
+  - pi: exp_weight
   - baseline: value_sample
 
 # which learners to train
@@ -28,6 +29,8 @@ baseline:
   load_path: null
   model_save_path: ${path}/models/${name}_baseline
 
+tag: 
+resampling: uniform
 # train loop hyperparameters
 beta_steps: 5e5
 baseline_steps: 0
@@ -39,13 +42,14 @@ beta_save_freq: 1e5
 pi_save_freq: 1e6
 q_save_freq: 1e6
 log_freq: 2e3
+eval_freq: 5e3
 
 eval_samples: 1000
-eval_episodes: 1
+eval_episodes: 10
 log_dir: ${path}/logs/${name}
 
 seed: 0
-device: cpu
+device: cuda
 
 # data parameters
 data_path: ${path}/data/${env.name}.pt

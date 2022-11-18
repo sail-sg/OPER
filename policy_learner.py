@@ -94,8 +94,9 @@ class PiLearner(object):
             returns[episode] = ep_return
         ret = np.mean(returns)
         
-        self.logger.update(self.logger_type + '/return', ret)
-        return ret
+        # self.logger.update(self.logger_type + '/return', ret)
+        # self.logger.update(self.logger_type + '/norm_return', env.get_normalized_score(ret))
+        return ret, env.get_normalized_score(ret)
 
     def save(self, path):
         torch.save(self.pinet.state_dict(), path)

@@ -22,4 +22,4 @@ depth: 2
 dist_type: normal
 
 # logging
-format_str: "Beta Train: Step {values[step]:8.0f}, Loss {values[loss]:2.6f}, Eval Return {values[return]:4.4f}, Entropy {values[entropy]:4.4f}"
+format_str: "Beta Train: Step {values[step]:8.0f}, Loss {values[loss]:2.6f}, Entropy {values[entropy]:4.4f}"

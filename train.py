@@ -5,11 +5,14 @@ import replay_buffer
 import numpy as np
 from copy import deepcopy
 from experiment_logging import default_logger as logger
-
+import wandb
 
 @hydra.main(config_path='config', config_name='train')
 def train(cfg):
     print('jobname: ', cfg.name)
+
+    wandb.init(project="onestep", config={'env': cfg.env.name, 'seed': cfg.seed, 
+                        'temp': cfg.pi.temp, 'resample': cfg.resampling, 'tag': cfg.tag,})
 
     # load data
     replay = torch.load(cfg.data_path)
@@ -55,11 +58,13 @@ def train(cfg):
         for step in range(int(cfg.beta_steps)):
             beta.train_step(replay, None, None, None)
 
-            if step % int(cfg.log_freq) == 0:
+            if (step+1) % int(cfg.log_freq) == 0:
                 logger.update('beta/step', step)
-                beta.eval(env, cfg.eval_episodes)
                 logger.write_sub_meter('beta')
-            if step % int(cfg.beta_save_freq) == 0:
+            if (step+1) % int(cfg.eval_freq) == 0:
+                ret, norm_ret = beta.eval(env, cfg.eval_episodes)
+                wandb.log({'beta/score': norm_ret}, step=step+1)
+            if (step+1) % int(cfg.beta_save_freq) == 0:
                 beta.save(cfg.beta.model_save_path + '_' + str(step) + '.pt')
 
     # train baseline
@@ -67,11 +72,13 @@ def train(cfg):
         for step in range(int(cfg.baseline_steps)):
             baseline.train_step(replay)
 
-            if step % int(cfg.log_freq) == 0:
+            if (step+1) % int(cfg.log_freq) == 0:
                 logger.update('baseline/step', step)
-                baseline.eval(env, beta, cfg.eval_episodes)
                 logger.write_sub_meter('baseline')
-            if step % int(cfg.beta_save_freq) == 0:
+            # if (step+1) % int(cfg.eval_freq) == 0:
+            #     ret, norm_ret = baseline.eval(env, beta, cfg.eval_episodes)
+            #     wandb.log({'baseline/score': norm_ret}, step=step)
+            if (step+1) % int(cfg.beta_save_freq) == 0:
                 beta.save(cfg.beta.model_save_path + '_' + str(step) + '.pt')
 
     # load beta as init pi
@@ -99,11 +106,13 @@ def train(cfg):
                 pi.train_step(replay, q, baseline, beta)
 
                 step = out_step * int(cfg.pi_steps) + in_step
-                if step % int(cfg.log_freq) == 0:
+                if (step+1) % int(cfg.log_freq) == 0:
                     logger.update('pi/step', step)
-                    pi.eval(env, cfg.eval_episodes)
                     logger.write_sub_meter('pi')
-                if step % int(cfg.pi_save_freq) == 0:
+                if (step+1) % int(cfg.eval_freq) == 0:
+                    ret, norm_ret = pi.eval(env, cfg.eval_episodes)
+                    wandb.log({'pi/score': norm_ret}, step=cfg.beta_steps+step+1)
+                if (step+1) % int(cfg.pi_save_freq) == 0:
                     pi.save(cfg.pi.model_save_path + '_' + str(step) + '.pt')
         elif cfg.pi.name == 'pi_easy_bcq':
             step = out_step + 1

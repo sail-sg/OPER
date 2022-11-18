@@ -2,3 +2,8 @@ __pycache__/*
 *.pt
 *.csv
 *.log
+k8s
+scripts
+run.sh
+wandb
+Makefile
