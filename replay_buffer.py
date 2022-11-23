@@ -1,8 +1,8 @@
 import numpy as np
 import torch
 import utils
-
-
+import typing
+import math
 
 class PrefetchBalancedSampler(object):
     """A prefetch balanced sampler."""
@@ -26,6 +26,38 @@ def sample(self, n=128):
         indices = self.sampler.sample()
         return self.get_transitions(indices)
 
+def split_traj_and_compute_return(replay):
+    size = replay.length
+    # compute time limit
+    dones_float = np.zeros_like(replay.r)
+    for i in range(len(dones_float) - 1):
+        if np.linalg.norm(replay.s[i + 1] -
+                            replay.sp[i]
+                            ) > 1e-6 or replay.d[i] == 1.0:
+            dones_float[i] = 1
+        else:
+            dones_float[i] = 0
+    dones_float[-1] = 1
+    replay.dones_float = dones_float.reshape(-1,1) # time limit truncated or terminal state
+
+    returns, ret, start = [], 0, 0
+    for i in range(size):
+        ret = ret + replay.r[i]
+        if dones_float[i]: 
+            returns.extend([ret]*(i-start+1))
+            start = i + 1
+            ret = 0
+    assert len(returns) == size
+    replay.returns = np.stack(returns)
+
+def get_topn_replay(replay, topn):
+    topn_ret = np.percentile(replay.returns, 100 - topn)
+    indices = np.where(replay.returns >= topn_ret)[0]
+    real_percentile = indices.shape[0]/replay.length
+    print(f'use top {real_percentile*100}% data.')
+    # assert np.abs(real_percentile - topn/100) < 0.02
+    return replay.subset(indices)
+
 
 class Transition():
     def __init__(self, state, action, reward, state_prime, action_prime=None, 
@@ -35,7 +67,7 @@ class Transition():
         self.r = reward
         self.sp = state_prime
         self.ap = action_prime
-        self.d = done
+        self.d = done # terminal. for value bootstrap
         self.batched = batched
 
     def to_torch(self):
@@ -71,7 +103,7 @@ class Replay:
         self.a = np.zeros((max_size, *action_shape))
         self.r = np.zeros((max_size, 1))
         self.sp = np.zeros((max_size, *state_shape))
-        self.d = np.zeros((max_size, 1))
+        self.d = np.zeros((max_size, 1)) # terminal for bootstrap.
 
         self.has_next_action = has_next_action
         if has_next_action:
