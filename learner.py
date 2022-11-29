@@ -76,7 +76,8 @@ class Learner(object):
                  opt_decay_schedule: str = "cosine",
                  last_layer_norm: bool = False,
                  batch_norm: bool = False,
-                 max_gradient_norm: float = 1.0,
+                 grad_clip: bool = False,
+                 max_gradient_norm: float = 10.0,
                  **kwargs):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1801.01290
@@ -189,9 +190,10 @@ class Learner(object):
                 raise NotImplementedError
 
         # clip gradient would hurt shallow network performance
-        # actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
-        # critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
-        # value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
+        if grad_clip:
+            actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
+            # critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
+            # value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
 
         action_dim = actions.shape[-1]
         # dropout only is added to hidden layers of actor

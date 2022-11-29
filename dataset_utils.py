@@ -84,7 +84,7 @@ class Dataset(object):
     def __init__(self, observations: np.ndarray, actions: np.ndarray,
                  rewards: np.ndarray, masks: np.ndarray,
                  dones_float: np.ndarray, next_observations: np.ndarray,
-                 size: int, batch_size: int, sample: str, reweight: bool, base_prob: float):
+                 size: int, batch_size: int, sample: str, reweight: bool, base_prob: float, pb: bool):
         self.observations = observations
         self.actions = actions
         self.rewards = rewards
@@ -96,13 +96,14 @@ class Dataset(object):
         self.batch_size = batch_size
         self.reweight = reweight
         self.resample = sample
+        self.pb = pb
         # prob
         if 'reward' in sample:
             dist = self.rewards
         elif 'return' in sample:
             dist = self.returns
         else:
-            dist = self.returns
+            dist = self.returns # default
             # raise NotImplemented
         if 'inverse' not in sample:
             probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
@@ -167,15 +168,32 @@ class Dataset(object):
             weight = weight / np.abs(weight).mean()
             weight = np.exp(exp_lambd * weight)
             prob = weight / weight.sum()
+        else:
+            raise NotImplementedError
         self.probs = prob
-
         if self.reweight:
             if len(prob.shape) == 1:
                 prob = np.expand_dims(prob, 1)
-            self.weights = prob * self.size
+            if self.pb:
+                self.final_weights = prob * self.size
+                self.weights = np.ones_like(self.final_weights)
+            else:
+                self.weights = prob * self.size
         if 'balance' in self.resample:
-            self.sampler.replace_prob(self.probs)
-
+            if self.pb:
+                self.sampler.replace_prob(np.ones_like(self.probs) / self.size)
+            else:
+                self.sampler.replace_prob(self.probs)
+    
+    def progressive_balance(self, t, T):
+        if t > T: return
+        assert self.pb
+        if self.reweight:
+            self.weights = (1-t/T) * np.ones_like(self.final_weights) + t/T * self.final_weights
+        if 'balance' in self.resample:
+            prob = (1-t/T) * np.ones_like(self.probs) / self.size + t/T * self.probs
+            self.sampler.replace_prob(prob)
+        return self.weights.max()
 
 class D4RLDataset(Dataset):
     def __init__(self,
@@ -184,6 +202,7 @@ class D4RLDataset(Dataset):
                  sample: str,
                  reweight: bool,
                  base_prob: float,
+                 pb: bool,
                  clip_to_eps: bool = True,
                  eps: float = 1e-5):
         dataset = d4rl.qlearning_dataset(env)
@@ -215,7 +234,8 @@ class D4RLDataset(Dataset):
                          batch_size=batch_size,
                          sample=sample,
                          reweight=reweight,
-                         base_prob=base_prob)
+                         base_prob=base_prob,
+                         pb=pb)
 
 
 class ReplayBuffer(Dataset):
