@@ -147,7 +147,7 @@ class Dataset(object):
                      rewards=self.rewards[indx],
                      masks=self.masks[indx],
                      next_observations=self.next_observations[indx],
-                     weights=self.weights[indx],
+                     weights=self.weights[indx].squeeze(),
                      )
     
     def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0, eps_max=None):

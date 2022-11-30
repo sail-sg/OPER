@@ -26,7 +26,7 @@ flags.DEFINE_integer('eval_episodes', 10,
 flags.DEFINE_boolean('encoder', True, 'an encoder for actor and critic input')
 flags.DEFINE_enum('rep_module', 'backbone', ['backbone', 'encoder'], 'The network for representation learning')
 # load weight
-flags.DEFINE_boolean('bc_eval', True, '')
+flags.DEFINE_boolean('bc_eval', False, '')
 flags.DEFINE_integer('weight_num', 3, 'how many weights to compute avg')
 flags.DEFINE_string('weight_ensemble', 'mean', 'how to aggregate weights over runnings')
 flags.DEFINE_string('weight_path', '', 'bc adv path str pattern')
@@ -39,8 +39,6 @@ flags.DEFINE_float('exp_lambd', 1.0, '')
 flags.DEFINE_boolean('pb', False, 'progressive-balanced sampling')
 flags.DEFINE_integer('pb_step', int(8e5), '')
 flags.DEFINE_integer('pb_interval', 1000, 'Eval interval.')
-
-
 # train
 flags.DEFINE_integer('train_steps', int(1e6), '')
 flags.DEFINE_enum('sampler', 'uniform', ['uniform', 'return-balance', 'inverse-return-balance'], '')
@@ -109,7 +107,7 @@ def main(_):
     assert not (FLAGS.reweight_improve ^ FLAGS.reweight_constraint)
     kwFLAGS = dict(FLAGS.config)
     # set up wandb
-    wandb.init(project="IQL-reweight", config={"env": FLAGS.env_name, "seed": FLAGS.seed,
+    wandb.init(project="IQL-reweight-v2", config={"env": FLAGS.env_name, "seed": FLAGS.seed,
             "encoder": FLAGS.encoder,  "sampler": FLAGS.sampler, "train_steps": FLAGS.train_steps, 
             "encoder_hidden_dims": FLAGS.config.encoder_hidden_dims, "embedding_dim": FLAGS.config.embedding_dim, "hidden_dims": FLAGS.config.hidden_dims,
             "base_prob": FLAGS.config.base_prob, "expectile": FLAGS.config.expectile,

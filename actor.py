@@ -16,10 +16,12 @@ def update(key: PRNGKey, actor: Model, critic: Model, value: Model,
     q1, q2 = critic(batch.observations, batch.actions, rngs={'dropout': key2})
     q = jnp.minimum(q1, q2)
     exp_a = jnp.exp((q - v) * temperature)
-    exp_a = jnp.minimum(exp_a, 100.0)
-    # TODO
+
     reweight = reweight_improve * reweight_constraint
     weights = batch.weights * reweight + jnp.ones_like(batch.weights) * (1-reweight)
+    exp_a = jnp.minimum(exp_a * weights, 100.0)
+    # TODO
+    
     # if reweight_improve and reweight_constraint:
     #     weights = batch.weights
     # elif reweight_improve and not reweight_constraint:
@@ -36,7 +38,6 @@ def update(key: PRNGKey, actor: Model, critic: Model, value: Model,
                            rngs={'dropout': key3})
         log_probs = dist.log_prob(batch.actions)
         actor_loss = -exp_a * log_probs
-        actor_loss *= weights
         actor_loss = actor_loss.mean()
         return actor_loss, {'actor_loss': actor_loss, 'adv': q - v}
 
