@@ -107,6 +107,34 @@ class ReplayBuffer(object):
             torch.FloatTensor(self.weights[ind]).to(self.device)
         )
     
+    def convert_bandit(self, dataset, random_state, optimistic_init):
+        self.size = dataset['actions'].shape[0]
+        self.action = dataset['actions']
+        self.reward = dataset['rewards'].reshape(-1,1)
+        self.not_done = np.zeros_like(self.reward)
+        if optimistic_init:
+            self.reward -= 10
+        if random_state:
+            self.state = np.random.randn(self.size, 1)
+            self.next_state = np.random.randn(self.size, 1)
+        else:
+            self.state = np.zeros((self.size, 1), dtype=np.float32)
+            self.next_state = np.zeros((self.size, 1), dtype=np.float32)
+        # accumulative return for traj
+        returns = self.reward
+        probs = (returns - returns.min()) / (returns.max() - returns.min()) + self.base_prob
+        self.probs = probs / probs.sum()
+        # rebalance
+        if self.reweight:
+            self.weights = self.probs * self.size
+        else:
+            self.weights = np.ones_like(self.probs)
+
+        if self.resample:
+            self.sampler = PrefetchBalancedSampler(self.probs, self.size, self.batch_size, n_prefetch=1000)
+        else:
+            self.sampler = RandSampler(self.size, self.batch_size)
+            
     
     def convert_D4RL(self, dataset):
         self.state = dataset['observations']

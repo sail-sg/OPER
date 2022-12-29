@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch.distributions as D
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -15,13 +15,22 @@ class Actor(nn.Module):
 		self.l1 = nn.Linear(state_dim, 256)
 		self.l2 = nn.Linear(256, 256)
 		self.l3 = nn.Linear(256, action_dim)
-		
+		self.log_std = nn.Parameter(torch.zeros(action_dim))
+		self.log_std.requires_grad = True
 		self.max_action = max_action
 		
 	def forward(self, state):
 		a = F.relu(self.l1(state))
 		a = F.relu(self.l2(a))
-		return self.max_action * torch.tanh(self.l3(a))
+		mu = torch.tanh(self.l3(a))
+		log_std = torch.clip(self.log_std, -5, 2)
+		# dist = D.Normal(mu, log_std.exp())
+		# action = dist.sample().clamp(-1., 1.)
+
+		z = torch.randn_like(mu, requires_grad=False)
+		action = z * log_std.exp() + mu
+
+		return action
 
 
 class Critic(nn.Module):
@@ -107,6 +116,10 @@ class TD3_BC(object):
 	def select_action(self, state):
 		state = torch.FloatTensor(state.reshape(1, -1)).to(device)
 		return self.actor(state).cpu().data.numpy().flatten()
+
+	def batch_select_action(self, state):
+		state = torch.FloatTensor(state).to(device)
+		return self.actor(state).cpu().data.numpy()
 
 
 	def train(self, replay_buffer):
