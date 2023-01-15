@@ -5,7 +5,7 @@ import utils
 import torch.distributions as D
 
 def soft_clamp(x, low, high):
-    x = torch.tanh(x)
+    x = torch.tanh(x)  # !tanh
     x = low + 0.5 * (high - low) * (x + 1)
     return x
 

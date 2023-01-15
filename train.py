@@ -6,15 +6,15 @@ import numpy as np
 from copy import deepcopy
 from experiment_logging import default_logger as logger
 import wandb
-PRETRAIN_NUM = 3 # the number of trained beta and Q before running
+PRETRAIN_NUM = 0  # the number of trained beta and Q before running
 @hydra.main(config_path='config', config_name='train')
 def train(cfg):
     print('jobname: ', cfg.name)
 
     wandb.init(project="onestep", config={'env': cfg.env.name, 'seed': cfg.seed, 
                         'temp': cfg.pi.temp, 'resample': cfg.resampling, 'topn': cfg.topn, 'std': cfg.std,
-                        'eps': cfg.eps, 'eps_max': cfg.eps_max, 'temp': cfg.pi.temp,
-                         'tag': cfg.tag,})
+                        'iter': cfg.iter, 'eps': cfg.eps, 'eps_max': cfg.eps_max, 'temp': cfg.pi.temp,
+                        'model_tag': cfg.model_tag, 'tag': cfg.tag,})
 
     # load data
     replay = torch.load(cfg.data_path)
@@ -89,6 +89,15 @@ def train(cfg):
     elif cfg.resampling == 'uniform' and cfg.topn < 100:
         split_traj_and_compute_return(replay)
         replay = get_topn_replay(replay, cfg.topn)
+    elif cfg.resampling == 'return':
+        split_traj_and_compute_return(replay)
+        dist = replay.returns
+        base_prob = 0.2 if 'antmaze' in cfg.env.name  else 0 
+        prob = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
+        sampler = PrefetchBalancedSampler(prob, replay.length, q.batch_size, 1000)
+        replay.sampler = sampler
+        import types
+        replay.sample = types.MethodType(sample, replay)
 
     # setup logger 
     os.makedirs(cfg.log_dir, exist_ok=True)
@@ -105,6 +114,7 @@ def train(cfg):
     else:
         model_ind = cfg.seed
     model_ind = int(model_ind)
+    model_tag = cfg.model_tag or cfg.tag
 
     # train
     if cfg.pi.name == 'pi_easy_bcq':
@@ -113,7 +123,7 @@ def train(cfg):
 
     # train beta
     if cfg.train_beta:
-        beta_model_path = os.path.join(cfg.path, 'models', cfg.tag, f'train_{cfg.env.name}_{model_ind}_{cfg.beta.name}') + '_' + str(int(cfg.beta_steps)) + f'_{model_ind}.pt'
+        beta_model_path = os.path.join(cfg.path, 'models', model_tag, f'train_{cfg.env.name}_{model_ind}_{cfg.beta.name}') + '_' + str(int(cfg.beta_steps)) + f'_{model_ind}.pt'
         if os.path.exists(beta_model_path):
             beta.load(beta_model_path)
             print(f'load beta model from {beta_model_path}')
@@ -149,7 +159,7 @@ def train(cfg):
     for out_step in range(int(cfg.steps)):        
         # train Q
         if cfg.train_q:
-            q_model_path = os.path.join(cfg.path, 'models', cfg.tag, f'train_{cfg.env.name}_{model_ind}_q') + '_' + str(int(cfg.q_steps)) + f'_{model_ind}.pt'
+            q_model_path = os.path.join(cfg.path, 'models', model_tag, f'train_{cfg.env.name}_{model_ind}_q') + '_' + str(int(cfg.q_steps)) + f'_{model_ind}.pt'
             if os.path.exists(q_model_path):
                 q.load(q_model_path)
                 print(f'load q model from {q_model_path}')
@@ -190,7 +200,8 @@ def train(cfg):
     #     q.save(cfg.q.model_save_path + '.pt')
     # if cfg.train_pi:
     #     pi.save(cfg.pi.model_save_path + '.pt')
-
+    # wandb.finish()
+    exit()
      
 def setup_logger(cfg):
     logger_dict = dict()

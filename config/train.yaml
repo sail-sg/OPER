@@ -18,6 +18,7 @@ train_baseline: false
 
 tag: 
 # model params
+model_tag: # the pretrained model tag
 beta:
   load_path: null
 q:
@@ -33,8 +34,9 @@ baseline:
 resampling: uniform
 topn: 100
 weight_func: linear
-weight_num: 3
-weight_path: ../TD3_BC/weights/nstep_nstep_10_1000000_5_1000000_norm=1_scale=False_${env.name}_%s.npy
+weight_num: 3 
+# weight_path: ../TD3_BC/weights/nstep_nstep_10_1000000_5_1000000_norm=1_scale=False_${env.name}_%s.npy
+weight_path: ../TD3_BC/weights/1000000_5_1000000_scale=False_${env.name}_%s.npy
 iter: 1
 std: 2.0
 eps: 0.1
