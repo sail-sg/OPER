@@ -159,10 +159,10 @@ class Dataset(object):
             if std:
                 scale = std / (prob.std() * self.size)
                 prob = scale*(prob - 1/self.size) + 1/self.size
-                if eps: # if scale, the prob may be negative.
-                    prob = np.maximum(prob, eps/self.size)
-                if eps_max: # if scale, the prob may be too large.
-                    prob = np.minimum(prob, eps_max/self.size)
+            if eps: # if scale, the prob may be negative.
+                prob = np.maximum(prob, eps/self.size)
+            if eps_max: # if scale, the prob may be too large.
+                prob = np.minimum(prob, eps_max/self.size)
             prob = prob/prob.sum() # norm to 1 again
         elif weight_func == 'exp':
             weight = weight / np.abs(weight).mean()

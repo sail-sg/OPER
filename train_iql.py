@@ -110,7 +110,7 @@ def main(_):
     wandb.init(project="IQL-reweight-v2", config={"env": FLAGS.env_name, "seed": FLAGS.seed,
             "encoder": FLAGS.encoder,  "sampler": FLAGS.sampler, "train_steps": FLAGS.train_steps, 
             "encoder_hidden_dims": FLAGS.config.encoder_hidden_dims, "embedding_dim": FLAGS.config.embedding_dim, "hidden_dims": FLAGS.config.hidden_dims,
-            "base_prob": FLAGS.config.base_prob, "expectile": FLAGS.config.expectile,
+            "base_prob": FLAGS.config.base_prob, "expectile": FLAGS.config.expectile, "temperature": FLAGS.config.temperature,
             "reweight": FLAGS.reweight, "reweight_eval": FLAGS.reweight_eval,
             "reweight_improve": FLAGS.reweight_improve, "reweight_constraint": FLAGS.reweight_constraint,
             "grad_clip": FLAGS.grad_clip, "max_grad_norm": FLAGS.max_grad_norm,
@@ -201,7 +201,7 @@ def main(_):
                 T = int(FLAGS.pb_step / FLAGS.pb_interval)
                 t = int(i / FLAGS.pb_interval)
                 max_weight = dataset.progressive_balance(t, T)
-                wandb.log({f"training_max_weigght": max_weight}, step=i)
+                wandb.log({f"training_max_weight": max_weight}, step=i)
                 # eval_returns.append((i, eval_stats['return']))
                 # np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
                 #            eval_returns,
@@ -209,7 +209,7 @@ def main(_):
 
         # save and load
         rep_agent.save(FLAGS.save_dir / 'ckpt')
-        sys.exit(0)
+        os._exit(os.EX_OK)
 
 
 
