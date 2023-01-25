@@ -12,15 +12,17 @@ from advantage import *
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
+# python main_bandit.py --resample
+# python main_bandit.py
+
 def vis(actions, colors='grey', path=None, title=None, legend=None):
     scatter = plt.scatter(actions[:, 0], actions[:, 1],
          c=colors, alpha=0.1)
     plt.xlim(-1, 1)
     plt.ylim(-1, 1)
-    plt.xlabel("x")
-    plt.ylabel("y")
-    if title: plt.title(title)
-    if path: plt.savefig(path)
+    if title: plt.title(title, fontsize = 25, fontweight="normal")
+    if path: plt.savefig(path, bbox_inches='tight')
+
 
 def eval_policy(policy, steps, eval_episodes=100, mini_batch=1000):
     mini_batch = min(mini_batch, eval_episodes)
@@ -34,10 +36,11 @@ def eval_policy(policy, steps, eval_episodes=100, mini_batch=1000):
         actions.append(action)
     actions = np.concatenate(actions, axis=0)
     if args.bc_eval:
-        title=f'{args.iter}th dataset'
+        title=f'{args.iter}th prioritized dataset'
     else:
-        title=f'original dataset'
-    vis(actions, path=f'{path}/step{steps+1}.jpg', title=title)
+        title=f'the original dataset'
+    vis(actions, path=f'{path}/step{steps+1}.pdf', title=title)
+    np.save(f'{path}/step{steps+1}.npy', actions)
 
 def none_or_float(value):
     if value == 'None' or value == 'none':
@@ -72,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--noise_clip", default=0.5)                # Range to clip target policy noise
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     # TD3 + BC
-    parser.add_argument("--alpha", default=2.5, type=float)
+    parser.add_argument("--alpha", default=0.25, type=float)
     parser.add_argument("--normalize", default=True)
     # rebalance
     parser.add_argument("--base_prob", default=0.0, type=float)
