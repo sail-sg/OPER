@@ -20,16 +20,6 @@ def update(key: PRNGKey, actor: Model, critic: Model, value: Model,
     reweight = reweight_improve * reweight_constraint
     weights = batch.weights * reweight + jnp.ones_like(batch.weights) * (1-reweight)
     exp_a = jnp.minimum(exp_a * weights, 100.0)
-    # TODO
-    
-    # if reweight_improve and reweight_constraint:
-    #     weights = batch.weights
-    # elif reweight_improve and not reweight_constraint:
-    #     raise NotImplementedError
-    # elif not reweight_improve and reweight_constraint:
-    #     raise NotImplementedError
-    # else:
-    #     weights = jnp.ones_like(batch.weights)
 
     def actor_loss_fn(actor_params: Params, ) -> Tuple[jnp.ndarray, InfoDict]:
         dist = actor.apply({'params': actor_params},  # forward prog

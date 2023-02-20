@@ -22,7 +22,7 @@ flags.DEFINE_string('save_dir', './result/', 'Tensorboard logging dir.')
 flags.DEFINE_integer('seed', 42, 'Random seed.')
 flags.DEFINE_integer('eval_episodes', 10,
                      'Number of episodes used for evaluation.')
-# network architecture
+# network architecture. The network architecture is equivalent to the official code of iql.
 flags.DEFINE_boolean('encoder', True, 'an encoder for actor and critic input')
 flags.DEFINE_enum('rep_module', 'backbone', ['backbone', 'encoder'], 'The network for representation learning')
 # load weight
@@ -47,8 +47,6 @@ flags.DEFINE_boolean('reweight', False, '')
 flags.DEFINE_boolean('reweight_eval', True, '')
 flags.DEFINE_boolean('reweight_improve', True, '')
 flags.DEFINE_boolean('reweight_constraint', True, '')
-flags.DEFINE_boolean('grad_clip', False, '')
-flags.DEFINE_float('max_grad_norm', 10.0, '')
 flags.DEFINE_integer('batch_size', 256, 'Mini batch size.')
 flags.DEFINE_integer('log_interval', 1000, 'Logging interval.')
 flags.DEFINE_integer('eval_interval', 5000, 'Eval interval.')
@@ -113,7 +111,6 @@ def main(_):
             "base_prob": FLAGS.config.base_prob, "expectile": FLAGS.config.expectile, "temperature": FLAGS.config.temperature,
             "reweight": FLAGS.reweight, "reweight_eval": FLAGS.reweight_eval,
             "reweight_improve": FLAGS.reweight_improve, "reweight_constraint": FLAGS.reweight_constraint,
-            "grad_clip": FLAGS.grad_clip, "max_grad_norm": FLAGS.max_grad_norm,
             # load weights
             "bc_eval": FLAGS.bc_eval, "iter": FLAGS.iter,  "weight_func": FLAGS.weight_func,
             "std": FLAGS.std, "eps": FLAGS.eps, "eps_max": FLAGS.eps_max, "weight_ensemble": FLAGS.weight_ensemble,
@@ -168,8 +165,6 @@ def main(_):
                     reweight_eval = FLAGS.reweight_eval,
                     reweight_improve = FLAGS.reweight_improve,
                     reweight_constraint = FLAGS.reweight_constraint,
-                    grad_clip=FLAGS.grad_clip,
-                    max_gradient_norm=FLAGS.max_grad_norm,
                     **kwFLAGS)
         for i in tqdm.tqdm(range(1, FLAGS.train_steps + 1),
                         smoothing=0.1,
@@ -202,14 +197,9 @@ def main(_):
                 t = int(i / FLAGS.pb_interval)
                 max_weight = dataset.progressive_balance(t, T)
                 wandb.log({f"training_max_weight": max_weight}, step=i)
-                # eval_returns.append((i, eval_stats['return']))
-                # np.savetxt(os.path.join(FLAGS.save_dir, f'{FLAGS.seed}.txt'),
-                #            eval_returns,
-                #            fmt=['%d', '%.1f'])
 
         # save and load
         rep_agent.save(FLAGS.save_dir / 'ckpt')
-        os._exit(os.EX_OK)
 
 
 

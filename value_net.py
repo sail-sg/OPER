@@ -27,11 +27,6 @@ class Critic(nn.Module):
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
                  actions: jnp.ndarray, training=True) -> jnp.ndarray:
-        # if self.encoder:
-        #     observations = self.encoder()(observations, training)
-        # inputs = jnp.concatenate([observations, actions], -1)
-        
-        # TODO: embedding for action, compatible with SSL
         if self.encoder:
             inputs = jnp.concatenate([observations, actions], -1)
             inputs = self.encoder()(inputs, training)
@@ -51,8 +46,6 @@ class DoubleCritic(nn.Module):
     @nn.compact
     def __call__(self, observations: jnp.ndarray,
                  actions: jnp.ndarray, training=True) -> Tuple[jnp.ndarray, jnp.ndarray]:
-        # if self.encoder:
-        #     observations = self.encoder(observations, training)
         critic1 = Critic(self.hidden_dims, encoder=self.encoder,
                          activations=self.activations)(observations, actions)
         critic2 = Critic(self.hidden_dims, encoder=self.encoder,

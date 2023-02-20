@@ -17,7 +17,6 @@ from critic import update_q, update_v
 
 
 def target_update(critic: Model, target_critic: Model, tau: float) -> Model:
-    # new_target_params = jax.tree_multimap(
     new_target_params = jax.tree_map(
         lambda p, tp: p * tau + tp * (1 - tau), critic.params,
         target_critic.params)
@@ -69,15 +68,11 @@ class Learner(object):
                  temperature: float = 0.1,
                  dropout_rate: Optional[float] = None,
                  max_steps: Optional[int] = None,
-                 finetune: str = '',
                  retrain: str = '',
                  encoder: bool = False,
-                 rep_module: str = '',
                  opt_decay_schedule: str = "cosine",
                  last_layer_norm: bool = False,
                  batch_norm: bool = False,
-                 grad_clip: bool = False,
-                 max_gradient_norm: float = 10.0,
                  **kwargs):
         """
         An implementation of the version of Soft-Actor-Critic described in https://arxiv.org/abs/1801.01290
@@ -87,8 +82,6 @@ class Learner(object):
         self.tau = tau
         self.discount = discount
         self.temperature = temperature
-        self.finetune = finetune
-        self.rep_module = rep_module
         self.reweight_eval = reweight_eval
         self.reweight_improve = reweight_improve
         self.reweight_constraint = reweight_constraint
@@ -96,7 +89,6 @@ class Learner(object):
         rng = jax.random.PRNGKey(seed)
         rng, actor_key, critic_key, value_key, \
         dropout_key1, dropout_key2, dropout_key3 = jax.random.split(rng, 7)
-
 
         if encoder:
             def actor_encoder_generator():
@@ -107,93 +99,14 @@ class Learner(object):
             actor_encoder_generator = None # encoder are implicitly included in actor/critic hidden layers
             critic_encoder_generator = None # encoder are implicitly included in actor/critic hidden layers
         
-        if not self.finetune or self.finetune == 'none':
-            if opt_decay_schedule == "cosine":
-                # negative lr for scale tranformation
-                # schedule_fn = optax.cosine_decay_schedule(-actor_lr, max_steps)
-                # actor_optimiser = optax.chain(optax.scale_by_adam(),
-                #                     optax.scale_by_schedule(schedule_fn))
-
-                schedule_fn = optax.cosine_decay_schedule(actor_lr, max_steps)
-                actor_optimiser = optax.adam(schedule_fn)
-                                    
-            else:
-                actor_optimiser = optax.adam(learning_rate=actor_lr)
-            critic_optimiser = optax.adam(learning_rate=critic_lr)
-            value_optimiser = optax.adam(learning_rate=value_lr)
-
-
+        if opt_decay_schedule == "cosine":
+            schedule_fn = optax.cosine_decay_schedule(actor_lr, max_steps)
+            actor_optimiser = optax.adam(schedule_fn)
+                                
         else:
-            
-            # 0.1x learning rate and warmup
-            if opt_decay_schedule == "cosine":
-                # schedule_fn = optax.cosine_decay_schedule(actor_lr*0.1, max_steps)
-                schedule_fn = optax.warmup_cosine_decay_schedule(
-                    init_value=actor_lr*0.001, 
-                    peak_value=actor_lr*0.1, 
-                    warmup_steps=int(max_steps/20),
-                    decay_steps=max_steps)
-                actor_optimiser = optax.adam(schedule_fn)
-            else:
-                actor_optimiser = optax.adam(learning_rate=actor_lr*0.1)
-            critic_optimiser = optax.adam(learning_rate=critic_lr*0.1)
-            value_optimiser = optax.adam(learning_rate=value_lr*0.1)
-            
-            # actor_param_labels = freeze({'MLP_0':'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
-            # single_critic_labels = {'MLP_0': {'Dense_0': 'rep', 'Dense_1': 'rep', 'Dense_2': 'pred'}}
-            # critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-            # value_param_labels = freeze(single_critic_labels)
-
-            if len(hidden_dims) > 0:
-                actor_param_labels = freeze({
-                    'Encoder_0': 'rep', 'MLP_0': 'pred', 'Dense_0': 'pred', 'log_stds': 'pred'})
-            else:
-                actor_param_labels = freeze({
-                    'Encoder_0': 'rep', 'Dense_0': 'pred', 'log_stds': 'pred'})
-            single_critic_labels = {'Encoder_0': 'rep', 'MLP_0': 'pred'}
-            critic_param_labels = freeze({'Critic_0': single_critic_labels, 'Critic_1': single_critic_labels})
-            value_param_labels = freeze(single_critic_labels)
-            
-            if self.finetune == 'freeze':
-                actor_optimiser2 = optax.set_to_zero()
-                critic_optimiser2 = optax.set_to_zero()
-                value_optimiser2 = optax.set_to_zero()
-            elif self.finetune == 'reduced-lr':
-                actor_optimiser2 = optax.adam(learning_rate=actor_lr*0.01)
-                critic_optimiser2 = optax.adam(learning_rate=critic_lr*0.01)
-                value_optimiser2 = optax.adam(learning_rate=value_lr*0.01)
-            else:
-                raise NotImplementedError
-        
-
-            if retrain == 'pred':
-                actor_optimiser = optax.multi_transform(
-                    {'rep': actor_optimiser2, 'pred': actor_optimiser},
-                    actor_param_labels)
-                critic_optimiser = optax.multi_transform(
-                    {'rep': critic_optimiser2, 'pred': critic_optimiser},
-                    critic_param_labels)
-                value_optimiser = optax.multi_transform(
-                    {'rep': value_optimiser2, 'pred': value_optimiser},
-                    value_param_labels)
-            elif retrain == 'repr':
-                actor_optimiser = optax.multi_transform(
-                    {'rep': actor_optimiser, 'pred': actor_optimiser2},
-                    actor_param_labels)
-                critic_optimiser = optax.multi_transform(
-                    {'rep': critic_optimiser, 'pred': critic_optimiser2},
-                    critic_param_labels)
-                value_optimiser = optax.multi_transform(
-                    {'rep': value_optimiser, 'pred': value_optimiser2},
-                    value_param_labels)
-            else:
-                raise NotImplementedError
-
-        # clip gradient would hurt shallow network performance
-        if grad_clip:
-            actor_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), actor_optimiser)
-            # critic_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), critic_optimiser)
-            # value_optimiser = optax.chain(optax.clip_by_global_norm(max_gradient_norm), value_optimiser)
+            actor_optimiser = optax.adam(learning_rate=actor_lr)
+        critic_optimiser = optax.adam(learning_rate=critic_lr)
+        value_optimiser = optax.adam(learning_rate=value_lr)
 
         action_dim = actions.shape[-1]
         # dropout only is added to hidden layers of actor
@@ -207,7 +120,6 @@ class Learner(object):
                                             tanh_squash_distribution=False)
         critic_def = value_net.DoubleCritic(hidden_dims, encoder=critic_encoder_generator)  # nn.module
         value_def = value_net.ValueCritic(hidden_dims, encoder=critic_encoder_generator)
-        # print(jax.tree_map(lambda layer_params: layer_params.shape, actor_def.param))
         actor = Model.create(actor_def,
                              inputs=[{'params': actor_key, 'dropout': dropout_key1}, observations],
                              tx=actor_optimiser)
@@ -266,9 +178,6 @@ class Learner(object):
         self.target_critic = self.target_critic.load(dir / 'target_critic.ckpt')
         self.actor = self.actor.load(dir / 'actor.ckpt')
         self.value = self.value.load(dir / 'value.ckpt')
-        
-    def reinitialize_output_layer(self):
-        raise NotImplementedError
 
 
 

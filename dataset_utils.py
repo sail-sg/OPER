@@ -104,13 +104,11 @@ class Dataset(object):
             dist = self.returns
         else:
             dist = self.returns # default
-            # raise NotImplemented
         if 'inverse' not in sample:
             probs = (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
         else:
             probs = 1 - (dist - dist.min()) / (dist.max() - dist.min()) + base_prob
         self.probs = probs / probs.sum()
-        # self.probs = np.sqrt(self.probs)
 
         # rebalance
         if self.reweight:
@@ -139,7 +137,6 @@ class Dataset(object):
 
 
     def sample(self) -> Batch:
-        # indx = np.random.randint(self.size, size=self.batch_size)
         indx = self.sampler.sample()
 
         return Batch(observations=self.observations[indx],
@@ -151,7 +148,6 @@ class Dataset(object):
                      )
     
     def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0, eps_max=None):
-        #? need set adv_prob_base?
         if weight_func == 'linear':
             weight = weight - weight.min()
             prob = weight / weight.sum()
