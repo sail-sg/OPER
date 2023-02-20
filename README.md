@@ -32,7 +32,7 @@ weight = weight - weight.min()
 prob = weight / weight.sum() * weight.size()
 ```
 
-The normalization process is included in the codes for cases studies (TD3+BC, IQL, CQL, OnestepRL), which can be found in other branches.
+The normalization process is included in the codes for cases studies (TD3+BC, IQL, CQL, OnestepRL), which can be found in other branches. In addition, bandit experiments can be found in `bandit` branch.
 
 ### Bibtex
 ```
