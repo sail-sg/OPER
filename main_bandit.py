@@ -1,19 +1,13 @@
 import numpy as np
 import torch
-import gym
 import argparse
 import os
-import d4rl
 import wandb
 import utils
 import TD3_BC
 import time
-from advantage import *
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-
-# python main_bandit.py --resample
-# python main_bandit.py
 
 def vis(actions, colors='grey', path=None, title=None, legend=None):
     scatter = plt.scatter(actions[:, 0], actions[:, 1],
@@ -138,8 +132,6 @@ if __name__ == "__main__":
             **kwargs
             })
 
-    # replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
-    #     base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, discount=args.discount)
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
         base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=1, discount=1.0)
     dataset = np.load('results/bandit.npy', allow_pickle=True).item()
@@ -148,7 +140,6 @@ if __name__ == "__main__":
 
     if args.bc_eval:
         # weight loading module (filename changed)
-            
         eval_res = np.load('results/weight.npy', allow_pickle=True).item()
         num_iter = eval_res['iter']
         assert args.iter <= num_iter
@@ -158,7 +149,6 @@ if __name__ == "__main__":
 
     # Initialize policy
     policy = TD3_BC.TD3_BC(**kwargs)
-
     
     # time0 = time.time()
     evaluations = []
