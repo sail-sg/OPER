@@ -42,6 +42,7 @@ flags.DEFINE_integer('pb_interval', 1000, 'Eval interval.')
 # train
 flags.DEFINE_integer('train_steps', int(1e6), '')
 flags.DEFINE_enum('sampler', 'uniform', ['uniform', 'return-balance', 'inverse-return-balance'], '')
+flags.DEFINE_boolean('two_sampler', False, '')
 flags.DEFINE_boolean('reinitialize', False, 'reinitialize the output layer')
 flags.DEFINE_boolean('reweight', False, '')
 flags.DEFINE_boolean('reweight_eval', True, '')
@@ -106,7 +107,7 @@ def main(_):
     kwFLAGS = dict(FLAGS.config)
     # set up wandb
     wandb.init(project="IQL-reweight-v2", config={"env": FLAGS.env_name, "seed": FLAGS.seed,
-            "encoder": FLAGS.encoder,  "sampler": FLAGS.sampler, "train_steps": FLAGS.train_steps, 
+            "encoder": FLAGS.encoder,  "sampler": FLAGS.sampler, "two_sampler": FLAGS.two_sampler, "train_steps": FLAGS.train_steps, 
             "encoder_hidden_dims": FLAGS.config.encoder_hidden_dims, "embedding_dim": FLAGS.config.embedding_dim, "hidden_dims": FLAGS.config.hidden_dims,
             "base_prob": FLAGS.config.base_prob, "expectile": FLAGS.config.expectile, "temperature": FLAGS.config.temperature,
             "reweight": FLAGS.reweight, "reweight_eval": FLAGS.reweight_eval,
@@ -170,8 +171,12 @@ def main(_):
                         smoothing=0.1,
                         disable=not FLAGS.tqdm):
             batch = dataset.sample()
+            if FLAGS.two_sampler:
+                uni_batch = dataset.sample(uniform=True)
+            else:
+                uni_batch = batch
 
-            update_info = rep_agent.update(batch)
+            update_info = rep_agent.update(batch, uni_batch)
 
             if i % FLAGS.log_interval == 0:
                 for k, v in update_info.items():
