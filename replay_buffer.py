@@ -22,7 +22,6 @@ class PrefetchBalancedSampler(object):
 
 """cover ReplayBuffer sample method"""
 def sample(self, n=128):
-        # indices = np.random.randint(0, self.length, size=(n,))
         indices = self.sampler.sample()
         return self.get_transitions(indices)
 
@@ -55,7 +54,6 @@ def get_topn_replay(replay, topn):
     indices = np.where(replay.returns >= topn_ret)[0]
     real_percentile = indices.shape[0]/replay.length
     print(f'use top {real_percentile*100}% data.')
-    # assert np.abs(real_percentile - topn/100) < 0.02
     return replay.subset(indices)
 
 
@@ -131,7 +129,6 @@ class Replay:
     def sample(self, n=128):
         indices = np.random.randint(0, self.length, size=(n,))
         return self.get_transitions(indices)
-
 
 
     # TODO: handle episodes correctly (only sample at least k from end)

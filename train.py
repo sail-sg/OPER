@@ -67,7 +67,6 @@ def train(cfg):
         else:
           raise NotImplementedError
         assert replay.length == weight.shape[0]
-        # TODO: scale
         if cfg.weight_func == 'linear':
             weight = weight - weight.min()
             prob = weight / weight.sum()
@@ -200,8 +199,6 @@ def train(cfg):
     #     q.save(cfg.q.model_save_path + '.pt')
     # if cfg.train_pi:
     #     pi.save(cfg.pi.model_save_path + '.pt')
-    # wandb.finish()
-    exit()
      
 def setup_logger(cfg):
     logger_dict = dict()

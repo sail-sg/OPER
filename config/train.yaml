@@ -1,7 +1,7 @@
 # @package _global_
 name: train_${env.name}_${seed}
 
-path: /home/aiops/yueyang/onestep-rl
+path: /path/to/onestep-rl
 
 defaults:
   - beta: bc
@@ -35,8 +35,7 @@ resampling: uniform
 topn: 100
 weight_func: linear
 weight_num: 3 
-# weight_path: ../TD3_BC/weights/nstep_nstep_10_1000000_5_1000000_norm=1_scale=False_${env.name}_%s.npy
-weight_path: ../TD3_BC/weights/1000000_5_1000000_scale=False_${env.name}_%s.npy
+weight_path: 
 iter: 1
 std: 2.0
 eps: 0.1

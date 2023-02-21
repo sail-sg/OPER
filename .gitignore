@@ -9,3 +9,6 @@ wandb
 Makefile
 .vscode
 .DS_Store
+data
+figure
+log

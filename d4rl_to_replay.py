@@ -5,9 +5,6 @@ import numpy as np
 import argparse
 import replay_buffer
 
-# import os
-# os.environ['D4RL_DATASET_DIR'] = 
-
 def d4rl_to_replay(name):
     env = gym.make(name)
     dataset = env.get_dataset()
