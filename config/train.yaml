@@ -16,9 +16,9 @@ train_q: true
 train_pi: true
 train_baseline: false
 
-tag: 
+tag:  # the model tag. If not none, the model would be saved.
 # model params
-model_tag: # the pretrained model tag
+model_tag: # the pretrained model tag. If not none, load pretrained beta and v.
 beta:
   load_path: null
 q:
@@ -32,6 +32,7 @@ baseline:
   model_save_path: ${path}/models/${tag}/${name}_baseline
 
 resampling: uniform
+two_sampler: false
 topn: 100
 weight_func: linear
 weight_num: 3 

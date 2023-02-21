@@ -54,8 +54,11 @@ class PiLearner(object):
     def loss(self, transitions, q, baseline, beta):
         raise NotImplementedError
 
-    def train_step(self, replay, q, baseline, beta):
-        transitions = replay.sample(self.batch_size)
+    def train_step(self, replay, q, baseline, beta, uniform=False):
+        if uniform:
+            transitions = replay.sample(self.batch_size, uniform=True)
+        else:
+            transitions = replay.sample(self.batch_size)
         transitions = transitions.to_device(self.device)
         loss = self.loss(transitions, q, baseline, beta)
         self.optimizer.zero_grad()

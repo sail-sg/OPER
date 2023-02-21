@@ -46,8 +46,11 @@ class QLearner(object):
     def loss(self, transitions, pi, beta=None):
         raise NotImplementedError
 
-    def train_step(self, replay, pi, beta=None):
-        transitions = replay.sample(self.batch_size)
+    def train_step(self, replay, pi, beta=None, uniform=False):
+        if uniform:
+            transitions = replay.sample(self.batch_size, uniform=True)
+        else:
+            transitions = replay.sample(self.batch_size)
         transitions = transitions.to_device(self.device)
         loss = self.loss(transitions, pi, beta)
         self.optimizer.zero_grad()

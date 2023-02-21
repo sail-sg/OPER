@@ -21,9 +21,13 @@ class PrefetchBalancedSampler(object):
         return self.indices[self.cnt*self._batch_size : (self.cnt+1)*self._batch_size]
 
 """cover ReplayBuffer sample method"""
-def sample(self, n=128):
+def sample(self, n=128, uniform=False):
+    if uniform:
+        indices = np.random.randint(0, self.length, size=(n,))
+    else:
         indices = self.sampler.sample()
-        return self.get_transitions(indices)
+    return self.get_transitions(indices)
+
 
 def split_traj_and_compute_return(replay):
     size = replay.length

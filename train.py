@@ -12,7 +12,7 @@ def train(cfg):
     print('jobname: ', cfg.name)
 
     wandb.init(project="onestep", config={'env': cfg.env.name, 'seed': cfg.seed, 
-                        'temp': cfg.pi.temp, 'resample': cfg.resampling, 'topn': cfg.topn, 'std': cfg.std,
+                        'temp': cfg.pi.temp, 'resample': cfg.resampling, 'two_sampler': cfg.two_sampler, 'topn': cfg.topn, 'std': cfg.std,
                         'iter': cfg.iter, 'eps': cfg.eps, 'eps_max': cfg.eps_max, 'temp': cfg.pi.temp,
                         'model_tag': cfg.model_tag, 'tag': cfg.tag,})
 
@@ -96,7 +96,9 @@ def train(cfg):
         sampler = PrefetchBalancedSampler(prob, replay.length, q.batch_size, 1000)
         replay.sampler = sampler
         import types
-        replay.sample = types.MethodType(sample, replay)
+        replay.sample = types.MethodType(sample, replay)       
+
+    replay.two_sampler = cfg.two_sampler
 
     # setup logger 
     os.makedirs(cfg.log_dir, exist_ok=True)
@@ -113,7 +115,7 @@ def train(cfg):
     else:
         model_ind = cfg.seed
     model_ind = int(model_ind)
-    model_tag = cfg.model_tag or cfg.tag
+    model_tag = cfg.model_tag or cfg.tag or ''
 
     # train
     if cfg.pi.name == 'pi_easy_bcq':
@@ -123,20 +125,21 @@ def train(cfg):
     # train beta
     if cfg.train_beta:
         beta_model_path = os.path.join(cfg.path, 'models', model_tag, f'train_{cfg.env.name}_{model_ind}_{cfg.beta.name}') + '_' + str(int(cfg.beta_steps)) + f'_{model_ind}.pt'
-        if os.path.exists(beta_model_path):
+        if model_tag and os.path.exists(beta_model_path):
             beta.load(beta_model_path)
             print(f'load beta model from {beta_model_path}')
         else:
             for step in range(int(cfg.beta_steps)):
-                beta.train_step(replay, None, None, None)
+                beta.train_step(replay, None, None, None, uniform=cfg.two_sampler)
                 if (step+1) % int(cfg.log_freq) == 0:
                     logger.update('beta/step', step)
                     logger.write_sub_meter('beta')
                 if (step+1) % int(cfg.eval_freq) == 0:
                     ret, norm_ret = beta.eval(env, cfg.eval_episodes)
                     wandb.log({'beta/score': norm_ret}, step=step+1)
-            beta_save_path = cfg.beta.model_save_path + '_' + str(int(cfg.beta_steps)) + f'_{cfg.seed}.pt'
-            beta.save(beta_save_path)
+            if cfg.tag:
+                beta_save_path = cfg.beta.model_save_path + '_' + str(int(cfg.beta_steps)) + f'_{cfg.seed}.pt'
+                beta.save(beta_save_path)
 
     # train baseline
     if cfg.train_baseline:
@@ -146,9 +149,6 @@ def train(cfg):
             if (step+1) % int(cfg.log_freq) == 0:
                 logger.update('baseline/step', step)
                 logger.write_sub_meter('baseline')
-            # if (step+1) % int(cfg.eval_freq) == 0:
-            #     ret, norm_ret = baseline.eval(env, beta, cfg.eval_episodes)
-            #     wandb.log({'baseline/score': norm_ret}, step=step)
         beta.save(cfg.beta.model_save_path + '_' + str(step+1) + f'_{cfg.seed}.pt')
 
     # load beta as init pi
@@ -159,20 +159,21 @@ def train(cfg):
         # train Q
         if cfg.train_q:
             q_model_path = os.path.join(cfg.path, 'models', model_tag, f'train_{cfg.env.name}_{model_ind}_q') + '_' + str(int(cfg.q_steps)) + f'_{model_ind}.pt'
-            if os.path.exists(q_model_path):
+            if model_tag and os.path.exists(q_model_path):
                 q.load(q_model_path)
                 print(f'load q model from {q_model_path}')
             else:
                 for in_step in range(int(cfg.q_steps)): 
-                    q.train_step(replay, pi, beta)
+                    q.train_step(replay, pi, beta, uniform=cfg.two_sampler)
                     
                     step = out_step * int(cfg.q_steps) + in_step 
                     if (step+1) % int(cfg.log_freq) == 0:
                         logger.update('q/step', step)
                         q.eval(env, pi, cfg.eval_episodes)
                         logger.write_sub_meter('q')
-                q_save_path = cfg.q.model_save_path + '_' + str(int(cfg.q_steps)) + f'_{cfg.seed}.pt'
-                q.save(q_save_path)
+                if cfg.tag:
+                    q_save_path = cfg.q.model_save_path + '_' + str(int(cfg.q_steps)) + f'_{cfg.seed}.pt'
+                    q.save(q_save_path)
 
         # train pi
         if cfg.train_pi and cfg.pi.name != 'pi_easy_bcq':
@@ -195,10 +196,6 @@ def train(cfg):
                 pi.eval(env, cfg.eval_episodes)
                 logger.write_sub_meter('pi')
     
-    # if cfg.train_q:
-    #     q.save(cfg.q.model_save_path + '.pt')
-    # if cfg.train_pi:
-    #     pi.save(cfg.pi.model_save_path + '.pt')
      
 def setup_logger(cfg):
     logger_dict = dict()
