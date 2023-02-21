@@ -27,7 +27,21 @@ Visualization of OPER-A and OPER-R weights can be found in `load_weights.ipynb`.
 
 #### Case Studies
 We provide the codes for cases studies (bandit, BC, TD3+BC, IQL, CQL, OnestepRL), which can be found in the corresponding branches. The code for BC is at the `OnestepRL` branch. Detailed usages is at `README.md` in these branches. 
+We provide both re-sampling and re-weighting implementations for OPER in case studies, both of which achieves similar performance in the majority of environments. However, re-sampling is more stable than re-weighting in several games (e.g., kitchen). Therefore, we recommond  re-sampling implementations.
 Note that for re-sampling and re-weighting, the priority weights from the first stage should be normalized. The normalization has been included in the codes of the second stage, no need for extra processing.
+
+We give some explanation about the config variables in the case study codes:
+- reweight: bool representing whether to reweight by OPER-A/OPER-R priority weights
+- resample: bool representing whether to resampler by OPER-A/OPER-R priority weights
+- reweight_eval: bool representing whether to reweight the policy evaluation term. Be valid only when reweight is true. If it's set to false, only reweight the policy constraint and improvement terms.
+- two_sampler: bool representing whether to use an extra uniform sampler for the policy evaluation term. If two_sampler is set to true and resample is set to true, only resample for the policy constraint and improvement terms.
+- bc_eval: bool representing whether to use OPER-A. If it's set to false, use OPER-R weights for resampling/reweighting.
+- weight_num: how many OPER-R weights to compute the average. Default is 3.
+- weight_path: A string representing where the OPER-A priority weights is saved. An example is `./weights/hopper-medium-v2_%s.npy`, where `%s` is a placeholder for seed. Then the script would automatically load `./weights/hopper-medium-v2_1.npy`, `./weights/hopper-medium-v2_2.npy`, and `./weights/hopper-medium-v2_3.npy`.
+- iter: The iteration which the OPER-A priroity weights comes from.
+- std: The standard deviation the OPER-A priroity weight is sacled to.
+
+
 
 ### Bibtex
 ```
