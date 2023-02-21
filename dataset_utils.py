@@ -138,10 +138,12 @@ class Dataset(object):
         return np.stack(returns)
 
 
-    def sample(self) -> Batch:
+    def sample(self, uniform=False) -> Batch:
         # indx = np.random.randint(self.size, size=self.batch_size)
-        indx = self.sampler.sample()
-
+        if uniform:
+            indx = np.random.randint(self.size, size=self.batch_size)
+        else:
+            indx = self.sampler.sample()
         return Batch(observations=self.observations[indx],
                      actions=self.actions[indx],
                      rewards=self.rewards[indx],
