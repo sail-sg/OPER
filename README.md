@@ -1,7 +1,7 @@
 # OPER: Offline Prioritized Experience Replay
 
 OPER is a plug-and-play component for offline RL algorithms, where comprises two stage: (1) calculate static priority weights. (2) Train offline RL algorithms on the prioritized dataset by resampling or reweighting.
-The paper can be found [TO BE FILLED](). 
+The paper can be found [here](https://arxiv.org/pdf/2306.05412.pdf). 
 
 As case studies, we evaluate OPER on five different algorithms, including BC, TD3+BC, Onestep RL, CQL, and IQL on D4RL. Extensive experiments demonstrate that both OPER-A and OPER-R significantly improve the performance for all baseline methods.
 We make public the priority weights of D4RL benchmark [here](https://drive.google.com/drive/folders/1QybIPy90nSrIIQbZrWBuPfoXMeIs1jCS?usp=sharing). 
@@ -44,13 +44,29 @@ We give some explanation about the config variables in the case study codes:
 
 
 ## *Note
-The code in this repository has been organized. Errors that may arise during the organizing process could lead to code malfunctions or discrepancies from the original research results. If you encounter any problems, please raise issues. I will go and fix these bugs.
+The code in this repository has been reorganized. Errors that may arise during the organizing process could lead to code malfunctions or discrepancies from the original research results. If you encounter any problems, please raise issues. I will go and fix these bugs.
 
 
 ## Bibtex
 
 ```
+@misc{yue2022boosting,
+      title={Boosting Offline Reinforcement Learning via Data Rebalancing}, 
+      author={Yang Yue and Bingyi Kang and Xiao Ma and Zhongwen Xu and Gao Huang and Shuicheng Yan},
+      year={2022},
+      eprint={2210.09241},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
 
+@misc{yue2023offline,
+      title={Offline Prioritized Experience Replay}, 
+      author={Yang Yue and Bingyi Kang and Xiao Ma and Gao Huang and Shiji Song and Shuicheng Yan},
+      year={2023},
+      eprint={2306.05412},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
 ```
 
 ## Credits
